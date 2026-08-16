@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+*.db
+*.sqlite3
+
+# 数据与产物（含测试/患者数据，不提交）
+backend/uploads/
+backend/processed/
+backend/datasets/
+backend/test_brainfusion.db
+backend/brainfusion.db
+backend.zip
+*.nii
+*.nii.gz
+*.dcm
+
+# Node / 前端
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# 环境与密钥
+.env
+.env.*
+!.env.example
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# 会话/内部
+.zcode/

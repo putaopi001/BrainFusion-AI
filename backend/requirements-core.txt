@@ -1,0 +1,12 @@
+# BrainFusion-AI Web 服务核心依赖（运行后端所需的最小集合）
+# 重型 AI 依赖（torch / nnunetv2 / monai 等）见 requirements.txt，仅本地训练/推理使用
+fastapi==0.141.1
+uvicorn==0.52.0
+sqlalchemy==2.0.51
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-multipart==0.0.32
+nibabel==5.4.2
+simpleitk==2.5.6
+numpy==2.2.6
+pillow==12.3.0
