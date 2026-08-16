@@ -38,6 +38,7 @@
       <el-table-column label="操作" width="330" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="goDetail(row.id)">详情</el-button>
+          <el-button size="small" type="primary" plain @click="workstation(row.id)">阅片</el-button>
           <el-button size="small" type="success" @click="uploadMRI(row.id)">上传 MRI</el-button>
           <el-button size="small" type="warning" @click="analysis(row.id)">AI 分析</el-button>
           <el-button size="small" type="danger" @click="report(row.id)">报告</el-button>
@@ -152,6 +153,7 @@ async function submitCase() {
 }
 
 function goDetail(id) { router.push({ name: "case-detail", params: { id } }) }
+function workstation(id) { router.push({ name: "workstation", params: { id } }) }
 function uploadMRI(id) { router.push({ name: "upload-mri", params: { case_id: id } }) }
 function analysis(id) { router.push(`/analysis?case_id=${id}`) }
 function report(id) { router.push(`/report?case_id=${id}`) }

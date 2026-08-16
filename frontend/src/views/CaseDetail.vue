@@ -136,7 +136,10 @@ class="box"
 
 
 <template #header>
-MRI影像浏览
+<div class="mri-header">
+<span>MRI影像浏览</span>
+<el-button size="small" type="primary" @click="goWorkstation">进入阅片工作站（全屏）</el-button>
+</div>
 </template>
 
 
@@ -899,6 +902,10 @@ function goAnalysis() {
   router.push(`/analysis?case_id=${caseId.value}`);
 }
 
+function goWorkstation() {
+  router.push({ name: "workstation", params: { id: caseId.value } });
+}
+
 function goReport() {
   router.push(`/report?case_id=${caseId.value}`);
 }
@@ -1078,6 +1085,16 @@ margin-top:18px;
 padding-top:14px;
 
 border-top:1px dashed #334155;
+
+}
+
+.mri-header{
+
+display:flex;
+
+align-items:center;
+
+justify-content:space-between;
 
 }
 

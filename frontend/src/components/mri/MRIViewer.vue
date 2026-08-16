@@ -8,6 +8,8 @@
       <div class="header-actions">
         <el-tag v-if="mode === 'volume'" type="success" size="small">真实窗宽窗位</el-tag>
         <el-tag v-else type="info" size="small">预览模式</el-tag>
+        <span v-if="hoverInfo" class="hover-info">{{ hoverInfo }}</span>
+        <el-button size="small" @click="toggleLayout">{{ layoutMode === "1view" ? "三视图" : "单视图" }}</el-button>
         <el-button size="small" @click="toggleFullscreen">全屏</el-button>
       </div>
     </header>
@@ -43,7 +45,7 @@
     <template v-else>
       <div class="viewport-grid">
         <Viewport
-          v-for="view in views"
+          v-for="view in visibleViews"
           :key="view"
           :view="view"
           :title="viewLabels[view]"
@@ -75,7 +77,7 @@
       <div class="control-panel">
         <div class="slice-controls">
           <SliceController
-            v-for="view in views"
+            v-for="view in visibleViews"
             :key="view"
             :label="viewLabels[view]"
             :slice-index="sliceIndices[view]"
@@ -157,6 +159,8 @@ const props = defineProps({
 const viewLabels = VIEW_LABELS
 const toolLabels = TOOL_LABELS
 const views = ["axial", "coronal", "sagittal"]
+const layoutMode = ref("3view") // 3view | 1view
+const visibleViews = computed(() => (layoutMode.value === "1view" ? ["axial"] : views))
 
 const workstationRef = ref(null)
 const isLoading = ref(true)
@@ -191,6 +195,8 @@ const panStart = ref(null)
 const zoomDrag = ref(null)
 const wlDrag = ref(null)
 let wlTimer = null
+let hoverTimer = null
+const hoverInfo = ref("")
 
 // ---- derived ----
 const shape = computed(() => (volumeMeta.value ? volumeMeta.value.shape : null))
@@ -490,7 +496,24 @@ function onPointerDown(view, point) {
   }
 }
 
+function scheduleHover(view, point) {
+  if (mode.value !== "volume" || !props.caseId) return
+  clearTimeout(hoverTimer)
+  hoverTimer = setTimeout(async () => {
+    try {
+      const res = await request.get("/mri/" + props.caseId + "/voxel", {
+        params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y },
+      })
+      const data = res.data.data
+      hoverInfo.value = "值 " + Math.round(data.value) + " · (" + data.voxel.x + "," + data.voxel.y + "," + data.voxel.z + ")"
+    } catch (e) {
+      /* ignore */
+    }
+  }, 150)
+}
+
 function onPointerMove(view, point) {
+  scheduleHover(view, point)
   if (panStart.value && activeTool.value === "pan") {
     panPerView.value[view] = {
       x: panStart.value.panX + point.clientX - panStart.value.clientX,
@@ -670,6 +693,10 @@ function toggleFullscreen() {
   workstationRef.value?.requestFullscreen?.()
 }
 
+function toggleLayout() {
+  layoutMode.value = layoutMode.value === "1view" ? "3view" : "1view"
+}
+
 function onKeydown(event) {
   if (event.key === "Escape") {
     draft.value = null
@@ -778,6 +805,7 @@ onBeforeUnmount(() => {
 .workstation-header h3 { margin: 0; color: #f8fafc; }
 .workstation-header p { margin: 4px 0 0; font-size: 12px; color: #94a3b8; }
 .header-actions { display: flex; align-items: center; gap: 8px; }
+.hover-info { font-size: 12px; color: #38bdf8; font-variant-numeric: tabular-nums; }
 .viewport-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .control-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
 .slice-controls { padding: 10px 12px; background: #172033; border-radius: 6px; }
