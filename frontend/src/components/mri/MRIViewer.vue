@@ -9,11 +9,6 @@
         <el-tag v-if="mode === 'volume'" type="success" size="small">真实窗宽窗位</el-tag>
         <el-tag v-else type="info" size="small">预览模式</el-tag>
         <el-button size="small" @click="toggleFullscreen">全屏</el-button>
-        <el-button
-          size="small"
-          :type="renderMode === 'cornerstone' ? 'warning' : 'default'"
-          @click="toggleRenderMode"
-        >{{ renderMode === "cornerstone" ? "切回 Canvas 渲染" : "Cornerstone3D 高级渲染" }}</el-button>
       </div>
     </header>
 
@@ -39,18 +34,13 @@
       @fullscreen="toggleFullscreen"
     />
 
+    <p v-if="toolHint" class="tool-hint">提示：{{ toolHint }}</p>
+
     <div v-if="isLoading" class="state">正在加载 MRI 数据…</div>
     <div v-else-if="loadError" class="state error">{{ loadError }}</div>
     <div v-else-if="!hasAnySlices" class="state">暂无可用 MRI 预览，请先生成预览切片。</div>
 
     <template v-else>
-      <CornerstoneViewer
-        v-if="renderMode === 'cornerstone'"
-        :file-url="props.fileUrl"
-        :mask-url="segmentationMaskUrl"
-      />
-
-      <template v-else>
       <div class="viewport-grid">
         <Viewport
           v-for="view in views"
@@ -71,6 +61,9 @@
           :zoom="zoomPerView[view]"
           :pan="panPerView[view]"
           :active-tool="activeTool"
+          :patient-name="patientName"
+          :window-width="windowWidth"
+          :window-level="windowLevel"
           @pointerdown="(p) => onPointerDown(view, p)"
           @pointermove="(p) => onPointerMove(view, p)"
           @pointerup="(p) => onPointerUp(view, p)"
@@ -110,7 +103,6 @@
       <p v-if="showSegmentation && mode === 'volume'" class="seg-disclaimer">
         AI 分割叠加为演示用模拟掩膜（红色区域），非真实模型输出。
       </p>
-      </template>
     </template>
 
     <section v-if="allAnnotations.length" class="annotation-list">
@@ -136,14 +128,13 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import request from "../../api/axios"
 import Toolbar from "./Toolbar.vue"
 import Viewport from "./Viewport.vue"
 import SliceController from "./SliceController.vue"
 import WindowLevel from "./WindowLevel.vue"
-const CornerstoneViewer = defineAsyncComponent(() => import("./CornerstoneViewer.vue"))
 import {
   VIEW_AXIS,
   VIEW_LABELS,
@@ -160,6 +151,7 @@ const props = defineProps({
   previewUrls: { type: Array, default: () => [] },
   previewViews: { type: Object, default: () => ({}) },
   filename: { type: String, default: "" },
+  patientName: { type: String, default: "" },
 })
 
 const viewLabels = VIEW_LABELS
@@ -170,10 +162,8 @@ const workstationRef = ref(null)
 const isLoading = ref(true)
 const loadError = ref("")
 const mode = ref("preview") // volume | preview
-const renderMode = ref("canvas") // canvas | cornerstone
 const volumeMeta = ref(null)
 const segmentationAvailable = ref(false)
-const segmentationMaskUrl = ref("")
 const showSegmentation = ref(false)
 
 const sliceIndices = ref({ axial: 0, coronal: 0, sagittal: 0 })
@@ -207,6 +197,25 @@ const shape = computed(() => (volumeMeta.value ? volumeMeta.value.shape : null))
 const sourceUrl = computed(() => resolveApiUrl(props.fileUrl))
 const hasAnySlices = computed(() => views.some((view) => viewSlices(view).length > 0))
 const allAnnotations = computed(() => [...savedAnnotations.value, ...pendingAnnotations.value])
+
+const toolHint = computed(() => {
+  const hints = {
+    pan: "平移：按住拖拽移动视图",
+    zoom: "缩放：上下拖拽缩放",
+    windowlevel: "窗宽窗位：左右拖拽调窗宽，上下拖拽调窗位",
+    line: "测距：按住拖拽画一条线测长度",
+    angle: "角度：按住拖拽画第一条边 → 松开 → 移动鼠标预览第二条边 → 单击确定",
+    rectangle: "矩形ROI：按住拖拽框选区域",
+    ellipse: "椭圆ROI：按住拖拽框选椭圆区域",
+    circle: "圆形ROI：按住拖拽框选圆形区域",
+    freehand: "自由ROI：按住沿轮廓描绘",
+    point: "标记点：单击放置标记点",
+    probe: "探针：单击读取该点体素值",
+    bidirectional: "双向测量：依次拖拽两条测量线",
+    text: "文字：单击放置文字标注",
+  }
+  return hints[activeTool.value] || ""
+})
 
 function viewSlices(view) {
   return props.previewViews[view]?.length
@@ -310,7 +319,6 @@ async function init() {
         try {
           const seg = await request.get("/mri/" + props.caseId + "/segmentation")
           segmentationAvailable.value = !!seg.data.data.available
-          segmentationMaskUrl.value = seg.data.data.mask_url || ""
         } catch (e) {
           segmentationAvailable.value = false
         }
@@ -429,16 +437,17 @@ function onPointerDown(view, point) {
   if (activeTool.value === "angle") {
     const current = draft.value && draft.value.view === view && draft.value.tool === "angle" ? draft.value : null
     if (!current) {
-      draft.value = { ...baseAnnotation(view, "angle", {}), points: [[point.x, point.y]], x: point.x, y: point.y, width: 0, height: 0 }
-    } else if (current.points.length === 1) {
-      current.points = [[current.x, current.y], [point.x, point.y]]
-    } else if (current.points.length === 2) {
-      current.points = [[current.x, current.y], current.points[1], [point.x, point.y]]
+      // 第一次按下：确定顶点，开始拖拽第一条边
+      draft.value = {
+        ...baseAnnotation(view, "angle", {}),
+        points: [[point.x, point.y], [point.x, point.y], [point.x, point.y]],
+        phase: "arm1",
+        x: point.x, y: point.y, width: 0, height: 0,
+      }
+    } else if (current.phase === "arm2") {
+      // 第二条边已预览，单击确定
       const annotation = withVoxel(baseAnnotation(view, "angle", {
-        x: current.x,
-        y: current.y,
-        width: 0,
-        height: 0,
+        x: current.points[0][0], y: current.points[0][1], width: 0, height: 0,
         points: JSON.stringify(current.points),
       }))
       pendingAnnotations.value.push(annotation)
@@ -523,6 +532,12 @@ function onPointerMove(view, point) {
       draft.value.drawing.cx = point.x
       draft.value.drawing.cy = point.y
     }
+  } else if (draft.value.tool === "angle") {
+    if (draft.value.phase === "arm1") {
+      draft.value.points[1] = [point.x, point.y]
+    } else if (draft.value.phase === "arm2") {
+      draft.value.points[2] = [point.x, point.y]
+    }
   }
 }
 
@@ -554,6 +569,16 @@ function onPointerUp(view, point) {
       }))
       pendingAnnotations.value.push(annotation)
       draft.value = null
+    }
+    return
+  }
+
+  // angle：第一条边拖拽结束，进入第二条边预览
+  if (draft.value.tool === "angle") {
+    if (draft.value.phase === "arm1") {
+      draft.value.points[1] = [point.x, point.y]
+      draft.value.phase = "arm2"
+      draft.value.points[2] = [point.x, point.y]
     }
     return
   }
@@ -645,8 +670,21 @@ function toggleFullscreen() {
   workstationRef.value?.requestFullscreen?.()
 }
 
-function toggleRenderMode() {
-  renderMode.value = renderMode.value === "cornerstone" ? "canvas" : "cornerstone"
+function onKeydown(event) {
+  if (event.key === "Escape") {
+    draft.value = null
+    panStart.value = null
+    zoomDrag.value = null
+    wlDrag.value = null
+    return
+  }
+  if (["ArrowUp", "ArrowLeft"].includes(event.key)) {
+    sliceIndices.value.axial = clamp(sliceIndices.value.axial - 1, 0, viewMaxIndex("axial"))
+    event.preventDefault()
+  } else if (["ArrowDown", "ArrowRight"].includes(event.key)) {
+    sliceIndices.value.axial = clamp(sliceIndices.value.axial + 1, 0, viewMaxIndex("axial"))
+    event.preventDefault()
+  }
 }
 
 async function saveAnnotations() {
@@ -723,7 +761,14 @@ watch(
   () => init(),
 )
 
-onMounted(init)
+onMounted(() => {
+  init()
+  window.addEventListener("keydown", onKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown)
+})
 </script>
 
 <style scoped>
@@ -738,6 +783,7 @@ onMounted(init)
 .slice-controls { padding: 10px 12px; background: #172033; border-radius: 6px; }
 .zoom-buttons { display: flex; gap: 6px; margin-top: 10px; }
 .seg-disclaimer { margin: 10px 0 0; font-size: 12px; color: #fca5a5; }
+.tool-hint { margin: 0 0 12px; padding: 6px 12px; background: #1e293b; border-left: 3px solid #38bdf8; border-radius: 4px; font-size: 12px; color: #94a3b8; }
 .state { padding: 64px 16px; text-align: center; color: #cbd5e1; }
 .error { color: #fca5a5; }
 .annotation-list { margin-top: 16px; padding: 12px; background: #172033; border-radius: 6px; }

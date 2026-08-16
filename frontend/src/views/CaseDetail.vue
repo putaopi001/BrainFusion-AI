@@ -156,6 +156,7 @@ v-if="detail.mri?.file_url"
 :preview-views="detail.mri.preview_views"
 
 :filename="detail.mri.filename"
+:patient-name="detail.patient?.name"
 
 />
 

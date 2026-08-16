@@ -41,6 +41,18 @@
           />
         </div>
       </div>
+
+      <!-- 方位标记（PACS 风格，固定在视口边缘） -->
+      <span class="orient orient-top">{{ orient.top }}</span>
+      <span class="orient orient-bottom">{{ orient.bottom }}</span>
+      <span class="orient orient-left">{{ orient.left }}</span>
+      <span class="orient orient-right">{{ orient.right }}</span>
+
+      <!-- 四角信息叠加 -->
+      <div class="corner corner-tl">{{ patientName || "BrainFusion AI" }}</div>
+      <div class="corner corner-tr">{{ Math.round(zoom * 100) }}%</div>
+      <div class="corner corner-bl">WW {{ Math.round(windowWidth) }} · WL {{ Math.round(windowLevel) }}</div>
+
       <div v-if="!loaded" class="loading-overlay">加载中…</div>
       <div v-if="error" class="error-overlay">{{ error }}</div>
     </div>
@@ -69,6 +81,9 @@ const props = defineProps({
   zoom: { type: Number, default: 1 },
   pan: { type: Object, default: () => ({ x: 0, y: 0 }) },
   activeTool: { type: String, default: "pan" },
+  patientName: { type: String, default: "" },
+  windowWidth: { type: Number, default: 100 },
+  windowLevel: { type: Number, default: 50 },
 })
 
 const emit = defineEmits(["pointerdown", "pointermove", "pointerup", "pointerleave", "wheel", "loaded"])
@@ -77,6 +92,14 @@ const boxRef = ref(null)
 const loaded = ref(false)
 const error = ref("")
 const BASE_WIDTH = 320
+
+// 放射学方位标记（示意，基于常见 RAS 方向约定）
+const ORIENTATION = {
+  axial: { top: "A", bottom: "P", left: "R", right: "L" },
+  coronal: { top: "S", bottom: "I", left: "R", right: "L" },
+  sagittal: { top: "S", bottom: "I", left: "A", right: "P" },
+}
+const orient = computed(() => ORIENTATION[props.view] || {})
 
 const boxStyle = computed(() => ({
   width: BASE_WIDTH + "px",
@@ -153,6 +176,18 @@ function onWheel(event) {
 .image-box { position: relative; line-height: 0; transform-origin: center center; }
 .slice-img { display: block; width: 100%; height: 100%; image-rendering: auto; }
 .mask-img { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.orient { position: absolute; color: #38bdf8; font-size: 12px; font-weight: 700; pointer-events: none; text-shadow: 0 0 3px #000; }
+.orient-top { top: 4px; left: 50%; transform: translateX(-50%); }
+.orient-bottom { bottom: 4px; left: 50%; transform: translateX(-50%); }
+.orient-left { left: 6px; top: 50%; transform: translateY(-50%); }
+.orient-right { right: 6px; top: 50%; transform: translateY(-50%); }
+
+.corner { position: absolute; color: #7dd3fc; font-size: 11px; pointer-events: none; text-shadow: 0 0 3px #000; opacity: 0.9; }
+.corner-tl { top: 4px; left: 6px; }
+.corner-tr { top: 4px; right: 6px; }
+.corner-bl { bottom: 4px; left: 6px; }
+
 .loading-overlay,
 .error-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; pointer-events: none; }
 .error-overlay { color: #fca5a5; }
