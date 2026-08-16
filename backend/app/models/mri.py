@@ -20,6 +20,7 @@ class MRI(Base):
     modality = Column(String, default="MRI")
     status = Column(String, default="uploaded")     # uploaded/processing/preview_ready/analyzed/failed
     doctor_verified = Column(Boolean, default=False, nullable=False)
+    segmentation_source = Column(String(20), default="mock")  # mock / uploaded
     created_time = Column(DateTime, default=datetime.utcnow)
     updated_time = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

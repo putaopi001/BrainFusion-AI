@@ -517,6 +517,162 @@ v-for="item in recommendations"
 
 
 
+<!-- 影像组学 + 生存预测 -->
+
+
+<el-card
+class="box"
+>
+
+
+<template #header>
+影像组学与生存预测
+</template>
+
+
+
+<el-button
+size="small"
+type="info"
+:loading="loadingSurvival"
+@click="loadSurvival"
+>
+{{ survivalData ? "重新计算" : "查看影像组学与生存预测" }}
+</el-button>
+
+
+
+<div
+v-if="survivalData"
+class="survival-box"
+>
+
+
+<div class="survival-risk">
+
+
+<span>
+生存风险等级：
+</span>
+
+
+
+<el-tag
+:type="survivalTagType"
+>
+{{ survivalLevelText }}
+</el-tag>
+
+
+
+<span class="survival-months">
+预估生存期：{{ survivalData.survival.estimated_survival_months }} 个月
+</span>
+
+
+
+</div>
+
+
+
+<h4>
+影像组学特征
+</h4>
+
+
+
+<table class="survival-table">
+
+
+<tbody>
+
+
+<tr
+v-for="(val, key) in survivalData.radiomics.intensity"
+:key="key"
+>
+
+
+<td>
+{{ key }}
+</td>
+
+
+
+<td>
+{{ typeof val === 'number' ? val.toFixed(2) : val }}
+</td>
+
+
+
+</tr>
+
+
+
+<tr>
+
+
+<td>
+tumor_fraction
+</td>
+
+
+
+<td>
+{{ (survivalData.radiomics.shape.tumor_fraction * 100).toFixed(2) }}%
+</td>
+
+
+
+</tr>
+
+
+
+<tr>
+
+
+<td>
+entropy
+</td>
+
+
+
+<td>
+{{ survivalData.radiomics.entropy }}
+</td>
+
+
+
+</tr>
+
+
+
+</tbody>
+
+
+</table>
+
+
+
+<p class="survival-hint">
+影像组学与生存预测为科研原型级启发式实现，非临床模型，结果仅供演示。
+</p>
+
+
+
+</div>
+
+
+
+</el-card>
+
+
+
+
+
+
+
+
 <!-- 操作 -->
 
 
@@ -623,6 +779,8 @@ const detail = ref({});
 const doctorOpinion = ref({ author: "", content: "", updated_time: null });
 const savingOpinion = ref(false);
 const verifying = ref(false);
+const survivalData = ref(null);
+const loadingSurvival = ref(false);
 
 const caseStore = useCaseStore();
 const mriStore = useMriStore();
@@ -702,6 +860,21 @@ const mriStatusType = computed(() => {
   return "info";
 });
 
+const survivalLevelText = computed(() => {
+  const level = survivalData.value?.survival.risk_level;
+  if (level === "high") return "高风险";
+  if (level === "medium") return "中风险";
+  if (level === "low") return "低风险";
+  return "未知";
+});
+
+const survivalTagType = computed(() => {
+  const level = survivalData.value?.survival.risk_level;
+  if (level === "high") return "danger";
+  if (level === "medium") return "warning";
+  return "success";
+});
+
 // --- 业务逻辑函数 ---
 
 async function loadDetail() {
@@ -776,6 +949,18 @@ async function verifyAI() {
     ElMessage.error(error.response?.data?.detail || "确认失败");
   } finally {
     verifying.value = false;
+  }
+}
+
+async function loadSurvival() {
+  loadingSurvival.value = true;
+  try {
+    const response = await request.get("/cases/" + caseId.value + "/survival");
+    survivalData.value = response.data.data;
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || "生存预测加载失败");
+  } finally {
+    loadingSurvival.value = false;
   }
 }
 
@@ -896,6 +1081,70 @@ border-top:1px dashed #334155;
 }
 
 .verify-hint{
+
+font-size:12px;
+
+color:#64748b;
+
+}
+
+.survival-box{
+
+margin-top:16px;
+
+}
+
+.survival-risk{
+
+display:flex;
+
+align-items:center;
+
+gap:10px;
+
+margin-bottom:14px;
+
+}
+
+.survival-months{
+
+color:#0f172a;
+
+font-weight:600;
+
+}
+
+.survival-table{
+
+width:100%;
+
+border-collapse:collapse;
+
+font-size:13px;
+
+}
+
+.survival-table td{
+
+border:1px solid #e2e8f0;
+
+padding:6px 10px;
+
+}
+
+.survival-table td:first-child{
+
+width:160px;
+
+background:#f8fafc;
+
+color:#475569;
+
+}
+
+.survival-hint{
+
+margin:12px 0 0;
 
 font-size:12px;
 

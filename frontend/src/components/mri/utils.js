@@ -58,6 +58,18 @@ export function angleDegrees(points) {
   return Math.round((Math.acos(cosine) * 180) / Math.PI)
 }
 
+// 椭圆 / 圆形 ROI 面积标签（体素单位）
+export function roiAreaLabel(annotation, shape, view) {
+  if (!shape) return ""
+  const { width, height } = sliceDims(shape, view)
+  const w = annotation.width * width
+  const h = annotation.height * height
+  const area = annotation.tool === "circle"
+    ? Math.PI * (Math.max(w, h) / 2) * (Math.max(w, h) / 2)
+    : Math.PI * (w / 2) * (h / 2)
+  return area.toFixed(1) + " px²"
+}
+
 export function parsePoints(value) {
   if (!value) return []
   if (Array.isArray(value)) return value

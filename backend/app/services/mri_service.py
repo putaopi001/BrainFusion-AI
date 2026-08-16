@@ -148,6 +148,32 @@ def render_mask_png(mask_path: Path, view: str, index: int) -> bytes:
     return buffer.getvalue()
 
 
+def voxel_coord_for_point(view: str, index: int, nx: float, ny: float, shape: tuple) -> dict:
+    """由视图 + 切片索引 + 归一化坐标计算体素坐标 {x,y,z}。"""
+    axis = VIEW_AXIS[view]
+    row_axis = 1 if axis == 0 else 0
+    col_axis = 2 if axis != 2 else 1
+    coord = [0, 0, 0]
+    coord[axis] = index
+    coord[col_axis] = int(round(nx * (shape[col_axis] - 1)))
+    coord[row_axis] = int(round(ny * (shape[row_axis] - 1)))
+    return {"x": coord[0], "y": coord[1], "z": coord[2]}
+
+
+def get_voxel_value(filepath: Path, view: str, index: int, nx: float, ny: float) -> dict:
+    """读取某视图某切片上归一化 (nx, ny) 处的体素强度值（探针工具）。"""
+    data, _, _ = load_volume(filepath)
+    axis = VIEW_AXIS[view]
+    index = max(0, min(int(index), data.shape[axis] - 1))
+    slice_2d = extract_slice(data, view, index)
+    rows, cols = slice_2d.shape
+    col = max(0, min(int(round(nx * (cols - 1))), cols - 1))
+    row = max(0, min(int(round(ny * (rows - 1))), rows - 1))
+    value = float(slice_2d[row, col])
+    voxel = voxel_coord_for_point(view, index, nx, ny, data.shape)
+    return {"value": value, "voxel": voxel}
+
+
 def compute_display_status(mri: MRI) -> str:
     """Derive a human-friendly reading status from stored fields (not the raw DB status)."""
     if mri.status == "analyzed":

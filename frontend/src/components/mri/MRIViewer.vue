@@ -9,6 +9,11 @@
         <el-tag v-if="mode === 'volume'" type="success" size="small">真实窗宽窗位</el-tag>
         <el-tag v-else type="info" size="small">预览模式</el-tag>
         <el-button size="small" @click="toggleFullscreen">全屏</el-button>
+        <el-button
+          size="small"
+          :type="renderMode === 'cornerstone' ? 'warning' : 'default'"
+          @click="toggleRenderMode"
+        >{{ renderMode === "cornerstone" ? "切回 Canvas 渲染" : "Cornerstone3D 高级渲染" }}</el-button>
       </div>
     </header>
 
@@ -39,6 +44,13 @@
     <div v-else-if="!hasAnySlices" class="state">暂无可用 MRI 预览，请先生成预览切片。</div>
 
     <template v-else>
+      <CornerstoneViewer
+        v-if="renderMode === 'cornerstone'"
+        :file-url="props.fileUrl"
+        :mask-url="segmentationMaskUrl"
+      />
+
+      <template v-else>
       <div class="viewport-grid">
         <Viewport
           v-for="view in views"
@@ -98,6 +110,7 @@
       <p v-if="showSegmentation && mode === 'volume'" class="seg-disclaimer">
         AI 分割叠加为演示用模拟掩膜（红色区域），非真实模型输出。
       </p>
+      </template>
     </template>
 
     <section v-if="allAnnotations.length" class="annotation-list">
@@ -123,13 +136,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import request from "../../api/axios"
 import Toolbar from "./Toolbar.vue"
 import Viewport from "./Viewport.vue"
 import SliceController from "./SliceController.vue"
 import WindowLevel from "./WindowLevel.vue"
+const CornerstoneViewer = defineAsyncComponent(() => import("./CornerstoneViewer.vue"))
 import {
   VIEW_AXIS,
   VIEW_LABELS,
@@ -156,8 +170,10 @@ const workstationRef = ref(null)
 const isLoading = ref(true)
 const loadError = ref("")
 const mode = ref("preview") // volume | preview
+const renderMode = ref("canvas") // canvas | cornerstone
 const volumeMeta = ref(null)
 const segmentationAvailable = ref(false)
+const segmentationMaskUrl = ref("")
 const showSegmentation = ref(false)
 
 const sliceIndices = ref({ axial: 0, coronal: 0, sagittal: 0 })
@@ -294,6 +310,7 @@ async function init() {
         try {
           const seg = await request.get("/mri/" + props.caseId + "/segmentation")
           segmentationAvailable.value = !!seg.data.data.available
+          segmentationMaskUrl.value = seg.data.data.mask_url || ""
         } catch (e) {
           segmentationAvailable.value = false
         }
@@ -357,6 +374,33 @@ function withVoxel(annotation) {
   return annotation
 }
 
+async function placeProbe(view, point) {
+  const vc = mode.value === "volume" && shape.value
+    ? voxelCoordinate(view, sliceIndices.value[view], point.x, point.y, shape.value)
+    : null
+  if (!props.caseId || mode.value !== "volume") {
+    pendingAnnotations.value.push(baseAnnotation(view, "probe", {
+      x: point.x, y: point.y, width: 0, height: 0,
+      note: vc ? "(" + vc.x + "," + vc.y + "," + vc.z + ")" : "",
+      voxel_coordinate: vc ? JSON.stringify(vc) : null,
+    }))
+    return
+  }
+  try {
+    const res = await request.get("/mri/" + props.caseId + "/voxel", {
+      params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y },
+    })
+    const data = res.data.data
+    pendingAnnotations.value.push(baseAnnotation(view, "probe", {
+      x: point.x, y: point.y, width: 0, height: 0,
+      note: "值 " + Math.round(data.value),
+      voxel_coordinate: JSON.stringify(data.voxel),
+    }))
+  } catch (e) {
+    ElMessage.warning("探针读取失败")
+  }
+}
+
 function onPointerDown(view, point) {
   if (activeTool.value === "pan") {
     panStart.value = { view, clientX: point.clientX, clientY: point.clientY, panX: panPerView.value[view].x, panY: panPerView.value[view].y }
@@ -376,6 +420,10 @@ function onPointerDown(view, point) {
   }
   if (activeTool.value === "text") {
     pendingAnnotations.value.push(withVoxel(baseAnnotation(view, "text", { x: point.x, y: point.y, width: 0, height: 0 })))
+    return
+  }
+  if (activeTool.value === "probe") {
+    placeProbe(view, point)
     return
   }
   if (activeTool.value === "angle") {
@@ -402,15 +450,34 @@ function onPointerDown(view, point) {
     draft.value = { ...baseAnnotation(view, "freehand", {}), points: [[point.x, point.y]], x: point.x, y: point.y, width: 0, height: 0 }
     return
   }
-  // rectangle | line
-  draft.value = {
-    ...baseAnnotation(view, activeTool.value, {}),
-    originX: point.x,
-    originY: point.y,
-    x: point.x,
-    y: point.y,
-    width: 0,
-    height: 0,
+  // rectangle | ellipse | circle | line：拖拽绘制
+  if (["rectangle", "ellipse", "circle", "line"].includes(activeTool.value)) {
+    draft.value = {
+      ...baseAnnotation(view, activeTool.value, {}),
+      originX: point.x,
+      originY: point.y,
+      x: point.x,
+      y: point.y,
+      width: 0,
+      height: 0,
+    }
+    return
+  }
+
+  // bidirectional：两次拖拽（两条测量线）
+  if (activeTool.value === "bidirectional") {
+    const current = draft.value && draft.value.view === view && draft.value.tool === "bidirectional" ? draft.value : null
+    if (!current) {
+      draft.value = {
+        ...baseAnnotation(view, "bidirectional", {}),
+        lines: [],
+        drawing: { sx: point.x, sy: point.y, cx: point.x, cy: point.y },
+        x: point.x, y: point.y, width: 0, height: 0,
+      }
+    } else if (current.lines.length < 2) {
+      current.drawing = { sx: point.x, sy: point.y, cx: point.x, cy: point.y }
+    }
+    return
   }
 }
 
@@ -443,13 +510,18 @@ function onPointerMove(view, point) {
     return
   }
   if (!draft.value || draft.value.view !== view) return
-  if (draft.value.tool === "rectangle" || draft.value.tool === "line") {
+  if (["rectangle", "ellipse", "circle", "line"].includes(draft.value.tool)) {
     draft.value.x = point.x
     draft.value.y = point.y
   } else if (draft.value.tool === "freehand") {
     const last = draft.value.points[draft.value.points.length - 1]
     if (Math.hypot(point.x - last[0], point.y - last[1]) > 0.005) {
       draft.value.points.push([point.x, point.y])
+    }
+  } else if (draft.value.tool === "bidirectional") {
+    if (draft.value.drawing) {
+      draft.value.drawing.cx = point.x
+      draft.value.drawing.cy = point.y
     }
   }
 }
@@ -465,8 +537,29 @@ function onPointerUp(view, point) {
   clearTimeout(wlTimer)
   if (!draft.value || draft.value.view !== view) return
 
+  // bidirectional 特殊处理：两次拖拽
+  if (draft.value.tool === "bidirectional") {
+    const d = draft.value
+    if (d.drawing) {
+      const line = [d.drawing.sx, d.drawing.sy, d.drawing.cx, d.drawing.cy]
+      if (Math.hypot(line[2] - line[0], line[3] - line[1]) > 0.005) {
+        d.lines.push(line)
+      }
+      d.drawing = null
+    }
+    if (d.lines.length >= 2) {
+      const annotation = withVoxel(baseAnnotation(view, "bidirectional", {
+        x: d.lines[0][0], y: d.lines[0][1], width: 0, height: 0,
+        points: JSON.stringify(d.lines),
+      }))
+      pendingAnnotations.value.push(annotation)
+      draft.value = null
+    }
+    return
+  }
+
   const { originX, originY, points, ...annotation } = draft.value
-  if (annotation.tool === "rectangle") {
+  if (annotation.tool === "rectangle" || annotation.tool === "ellipse" || annotation.tool === "circle") {
     annotation.x = Math.min(originX, annotation.x)
     annotation.y = Math.min(originY, annotation.y)
     annotation.width = Math.abs(annotation.x - originX)
@@ -550,6 +643,10 @@ function toggleSegmentation() {
 
 function toggleFullscreen() {
   workstationRef.value?.requestFullscreen?.()
+}
+
+function toggleRenderMode() {
+  renderMode.value = renderMode.value === "cornerstone" ? "canvas" : "cornerstone"
 }
 
 async function saveAnnotations() {

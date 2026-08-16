@@ -56,6 +56,7 @@ def apply_schema_updates() -> None:
     _ensure_column("mris", "preview_error", "preview_error VARCHAR")
     _ensure_column("mris", "processed_path", "processed_path VARCHAR")
     _ensure_column("mris", "doctor_verified", "doctor_verified BOOLEAN DEFAULT 0")
+    _ensure_column("mris", "segmentation_source", "segmentation_source VARCHAR DEFAULT 'mock'")
     _ensure_column("mris", "created_time", "created_time DATETIME")
     _ensure_column("mris", "updated_time", "updated_time DATETIME")
 

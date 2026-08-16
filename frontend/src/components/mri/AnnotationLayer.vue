@@ -42,6 +42,73 @@
         :fill="annotation.color"
         class="shape"
       />
+      <g v-else-if="annotation.tool === 'ellipse'">
+        <ellipse
+          :cx="(annotation.x + annotation.width / 2) * width"
+          :cy="(annotation.y + annotation.height / 2) * height"
+          :rx="annotation.width * width / 2"
+          :ry="annotation.height * height / 2"
+          :stroke="annotation.color"
+          fill="rgba(255,255,255,0.06)"
+          class="shape"
+        />
+        <text
+          :x="(annotation.x + annotation.width / 2) * width"
+          :y="annotation.y * height - 8"
+          :fill="annotation.color"
+          font-size="14"
+          text-anchor="middle"
+          class="label-text"
+        >{{ roiAreaLabel(annotation) }}</text>
+      </g>
+      <g v-else-if="annotation.tool === 'circle'">
+        <circle
+          :cx="(annotation.x + annotation.width / 2) * width"
+          :cy="(annotation.y + annotation.height / 2) * height"
+          :r="Math.max(annotation.width * width, annotation.height * height) / 2"
+          :stroke="annotation.color"
+          fill="rgba(255,255,255,0.06)"
+          class="shape"
+        />
+        <text
+          :x="(annotation.x + annotation.width / 2) * width"
+          :y="annotation.y * height - 8"
+          :fill="annotation.color"
+          font-size="14"
+          text-anchor="middle"
+          class="label-text"
+        >{{ roiAreaLabel(annotation) }}</text>
+      </g>
+      <circle
+        v-else-if="annotation.tool === 'probe'"
+        :cx="annotation.x * width"
+        :cy="annotation.y * height"
+        r="3"
+        :fill="annotation.color"
+        class="shape"
+      />
+      <g v-else-if="annotation.tool === 'bidirectional'">
+        <template v-if="bidirectionalLines(annotation).length >= 1">
+          <line
+            v-for="(line, idx) in bidirectionalLines(annotation)"
+            :key="idx"
+            :x1="line[0] * width"
+            :y1="line[1] * height"
+            :x2="line[2] * width"
+            :y2="line[3] * height"
+            :stroke="annotation.color"
+            class="shape"
+          />
+          <text
+            v-if="bidirectionalLines(annotation).length >= 2"
+            :x="bidirectionalLines(annotation)[0][0] * width"
+            :y="bidirectionalLines(annotation)[0][1] * height - 8"
+            :fill="annotation.color"
+            font-size="14"
+            class="label-text"
+          >{{ bidirectionalLabel(annotation) }}</text>
+        </template>
+      </g>
       <g v-else-if="annotation.tool === 'line'">
         <line
           :x1="annotation.x * width"
@@ -105,7 +172,7 @@
 
       <!-- optional note label -->
       <text
-        v-if="annotation.note && annotation.tool !== 'text' && annotation.tool !== 'line'"
+        v-if="annotation.note && annotation.tool !== 'text' && annotation.tool !== 'line' && annotation.tool !== 'ellipse' && annotation.tool !== 'circle'"
         :x="annotation.x * width + 8"
         :y="annotation.y * height - 8"
         :fill="annotation.color"
@@ -122,6 +189,27 @@
         :y="Math.min(draft.originY, draft.y) * height"
         :width="Math.abs(draft.x - draft.originX) * width"
         :height="Math.abs(draft.y - draft.originY) * height"
+        :stroke="draft.color"
+        fill="transparent"
+        stroke-dasharray="6 4"
+        class="shape"
+      />
+      <ellipse
+        v-else-if="draft.tool === 'ellipse'"
+        :cx="((draft.originX + draft.x) / 2) * width"
+        :cy="((draft.originY + draft.y) / 2) * height"
+        :rx="Math.abs(draft.x - draft.originX) * width / 2"
+        :ry="Math.abs(draft.y - draft.originY) * height / 2"
+        :stroke="draft.color"
+        fill="transparent"
+        stroke-dasharray="6 4"
+        class="shape"
+      />
+      <circle
+        v-else-if="draft.tool === 'circle'"
+        :cx="((draft.originX + draft.x) / 2) * width"
+        :cy="((draft.originY + draft.y) / 2) * height"
+        :r="Math.max(Math.abs(draft.x - draft.originX) * width, Math.abs(draft.y - draft.originY) * height) / 2"
         :stroke="draft.color"
         fill="transparent"
         stroke-dasharray="6 4"
@@ -166,13 +254,35 @@
           class="shape"
         />
       </g>
+      <g v-else-if="draft.tool === 'bidirectional'">
+        <line
+          v-for="(line, idx) in (draft.lines || [])"
+          :key="idx"
+          :x1="line[0] * width"
+          :y1="line[1] * height"
+          :x2="line[2] * width"
+          :y2="line[3] * height"
+          :stroke="draft.color"
+          class="shape"
+        />
+        <line
+          v-if="draft.drawing"
+          :x1="draft.drawing.sx * width"
+          :y1="draft.drawing.sy * height"
+          :x2="draft.drawing.cx * width"
+          :y2="draft.drawing.cy * height"
+          :stroke="draft.color"
+          stroke-dasharray="6 4"
+          class="shape"
+        />
+      </g>
     </g>
   </svg>
 </template>
 
 <script setup>
 import { computed } from "vue"
-import { angleDegrees, parsePoints, sliceDims } from "./utils"
+import { angleDegrees, parsePoints, roiAreaLabel as roiAreaUtil, sliceDims } from "./utils"
 
 const props = defineProps({
   view: { type: String, default: "axial" },
@@ -211,6 +321,24 @@ function lineLengthLabel(annotation) {
   const { width, height } = sliceDims(props.shape, props.view)
   const px = Math.hypot(annotation.width * width, annotation.height * height)
   return px.toFixed(1) + " px"
+}
+
+function roiAreaLabel(annotation) {
+  if (!props.shape) return ""
+  return roiAreaUtil(annotation, props.shape, props.view)
+}
+
+function bidirectionalLines(annotation) {
+  return parsePoints(annotation.points)
+}
+
+function bidirectionalLabel(annotation) {
+  const lines = bidirectionalLines(annotation)
+  if (!props.shape || lines.length < 2) return ""
+  const { width, height } = sliceDims(props.shape, props.view)
+  const l1 = Math.hypot((lines[0][2] - lines[0][0]) * width, (lines[0][3] - lines[0][1]) * height)
+  const l2 = Math.hypot((lines[1][2] - lines[1][0]) * width, (lines[1][3] - lines[1][1]) * height)
+  return l1.toFixed(1) + " / " + l2.toFixed(1) + " px"
 }
 </script>
 

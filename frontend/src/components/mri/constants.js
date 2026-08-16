@@ -14,8 +14,12 @@ export const TOOL_LABELS = {
   line: "测距",
   angle: "角度",
   rectangle: "矩形ROI",
+  ellipse: "椭圆ROI",
+  circle: "圆形ROI",
   freehand: "自由ROI",
   point: "标记点",
+  probe: "探针",
+  bidirectional: "双向测量",
   text: "文字标注",
 }
 

@@ -1,12 +1,12 @@
 from pydantic import BaseModel, Field
 
 
-# 标注工具类型：rectangle(矩形ROI)/point(标记点)/line(测量线)/text(文字)/freehand(自由绘制)/angle(角度)
+# 标注工具类型：rectangle(矩形ROI)/point(标记点)/line(测量线)/text(文字)/freehand(自由绘制)/angle(角度)/ellipse(椭圆ROI)/circle(圆形ROI)/probe(探针)/bidirectional(双向测量)
 # 标注类别：tumor(肿瘤)/edema(水肿)/necrosis(坏死)/blood(出血)/other(其他)
 class AnnotationCreate(BaseModel):
     view: str = Field(pattern="^(axial|coronal|sagittal)$")
     slice_index: int = Field(ge=0)
-    tool: str = Field(default="rectangle", pattern="^(rectangle|point|line|text|freehand|angle)$")
+    tool: str = Field(default="rectangle", pattern="^(rectangle|point|line|text|freehand|angle|ellipse|circle|probe|bidirectional)$")
     annotation_type: str = Field(default="other", pattern="^(tumor|edema|necrosis|blood|other)$")
     color: str = Field(default="#f97316", min_length=4, max_length=20)
     x: float = Field(ge=0, le=1)

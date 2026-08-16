@@ -13,6 +13,9 @@ from app.models.report import Report
 from app.models.doctor_opinion import DoctorOpinion
 from app.schemas.case import CaseCreate
 from app.schemas.doctor_opinion import DoctorOpinionUpdate
+from app.services import mri_service
+from app.services.radiomics_service import extract_radiomics
+from app.services.survival_service import predict_survival
 
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -208,3 +211,31 @@ def save_doctor_opinion(case_id: int, payload: DoctorOpinionUpdate, db: Session 
     db.commit()
     db.refresh(opinion)
     return {"code": 200, "data": {"updated_time": opinion.updated_time.isoformat()}}
+
+
+@router.get("/{case_id}/survival")
+def get_survival_prediction(case_id: int, db: Session = Depends(get_db)):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="case not found")
+    patient = db.query(Patient).filter(Patient.id == case.patient_id).first()
+    mri = db.query(MRI).filter(MRI.case_id == case_id).order_by(MRI.id.desc()).first()
+    if not mri:
+        raise HTTPException(status_code=404, detail="MRI not found")
+    source = mri_service.resolve_filepath(mri)
+    if not source:
+        raise HTTPException(status_code=404, detail="MRI file is missing")
+    try:
+        radiomics = extract_radiomics(source)
+    except Exception as error:
+        raise HTTPException(status_code=422, detail=f"radiomics failed: {error}")
+    survival = predict_survival(radiomics, patient.age if patient else None)
+    return {
+        "code": 200,
+        "data": {
+            "patient_name": patient.name if patient else "",
+            "age": patient.age if patient else None,
+            "radiomics": radiomics,
+            "survival": survival,
+        },
+    }

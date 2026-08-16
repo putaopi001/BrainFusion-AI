@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.schemas.annotation import AnnotationCreate
 from app.services import annotation_service
 from app.services import mri_service
 from app.services.mri_preview_service import generate_mri_previews
+from app.services.radiomics_service import extract_radiomics
 
 
 router = APIRouter(prefix="/mri", tags=["mri"])
@@ -160,14 +161,45 @@ def get_segmentation_info(case_id: int, db: Session = Depends(get_db)):
             "code": 200,
             "data": {
                 "available": True,
-                "source": "mock",
-                "disclaimer": "演示用模拟分割掩膜，非真实 AI 模型输出。",
+                "source": mri.segmentation_source or "mock",
+                "mask_url": "/" + mask_path.relative_to(BACKEND_DIR).as_posix(),
+                "disclaimer": "分割掩膜（模拟或医生上传），非真实 AI 模型输出。",
                 "shape": list(mask.shape),
                 "views": {view: int(mask.shape[axis]) for view, axis in mri_service.VIEW_AXIS.items()},
             },
         }
     except Exception as error:
         raise HTTPException(status_code=422, detail=f"{type(error).__name__}: {error}")
+
+
+@router.post("/{case_id}/segmentation")
+async def upload_segmentation(case_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    mri = _get_latest_mri(case_id, db)
+    source = mri_service.resolve_filepath(mri)
+    if not source:
+        raise HTTPException(status_code=404, detail="MRI file is missing")
+    if not file.filename or not file.filename.lower().endswith((".nii", ".nii.gz")):
+        raise HTTPException(status_code=415, detail="only .nii/.nii.gz mask files are supported")
+
+    mask_path = source.parent / "seg_mask.nii.gz"
+    content = await file.read()
+    mask_path.write_bytes(content)
+
+    try:
+        volume_shape = list(mri_service.load_volume(source)[0].shape)
+        mask_shape = list(mri_service.load_volume(mask_path)[0].shape)
+        if volume_shape != mask_shape:
+            mask_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail=f"mask shape {mask_shape} does not match volume shape {volume_shape}")
+    except HTTPException:
+        raise
+    except Exception as error:
+        mask_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=f"invalid mask file: {error}")
+
+    mri.segmentation_source = "uploaded"
+    db.commit()
+    return {"code": 200, "message": "segmentation saved", "data": {"shape": mask_shape}}
 
 
 @router.get("/{case_id}/mask/{view}/{index}")
@@ -184,6 +216,41 @@ def get_mask_png(case_id: int, view: str, index: int, db: Session = Depends(get_
     except Exception as error:
         raise HTTPException(status_code=422, detail=f"{type(error).__name__}: {error}")
     return StreamingResponse(iter([png]), media_type="image/png")
+
+
+@router.get("/{case_id}/voxel")
+def get_voxel_value(
+    case_id: int,
+    view: str,
+    index: int,
+    nx: float,
+    ny: float,
+    db: Session = Depends(get_db),
+):
+    if view not in mri_service.VIEW_AXIS:
+        raise HTTPException(status_code=404, detail="view must be axial|coronal|sagittal")
+    mri = _get_latest_mri(case_id, db)
+    source = mri_service.resolve_filepath(mri)
+    if not source:
+        raise HTTPException(status_code=404, detail="MRI file is missing")
+    try:
+        result = mri_service.get_voxel_value(source, view, index, float(nx), float(ny))
+    except Exception as error:
+        raise HTTPException(status_code=422, detail=f"{type(error).__name__}: {error}")
+    return {"code": 200, "data": result}
+
+
+@router.get("/{case_id}/radiomics")
+def get_radiomics(case_id: int, db: Session = Depends(get_db)):
+    mri = _get_latest_mri(case_id, db)
+    source = mri_service.resolve_filepath(mri)
+    if not source:
+        raise HTTPException(status_code=404, detail="MRI file is missing")
+    try:
+        features = extract_radiomics(source)
+    except Exception as error:
+        raise HTTPException(status_code=422, detail=f"{type(error).__name__}: {error}")
+    return {"code": 200, "data": features}
 
 
 @router.post("/{case_id}/verify")

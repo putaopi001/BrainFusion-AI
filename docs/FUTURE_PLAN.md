@@ -3,8 +3,8 @@
 ## 一、v0.2 规划（工程演进）
 
 - [ ] 打通 preprocess → predict 流程（用 processed_path 作为分析输入）
-- [ ] 报告导出 PDF
-- [ ] 前端路由级代码分割（减少首屏体积）
+- [x] 报告导出 PDF（已完成，html2pdf.js）
+- [x] 前端路由级代码分割（Cornerstone3D / PDF 已懒加载，独立 chunk）
 - [ ] 登录与权限体系（角色：医生 / 研究员 / 管理员）
 - [ ] SQLite → PostgreSQL 迁移
 - [ ] 清理遗留接口（reports.py 硬编码路径）

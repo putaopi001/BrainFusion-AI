@@ -107,8 +107,12 @@ const tools = [
   { value: "line", label: "测距" },
   { value: "angle", label: "角度" },
   { value: "rectangle", label: "矩形ROI" },
+  { value: "ellipse", label: "椭圆ROI" },
+  { value: "circle", label: "圆形ROI" },
   { value: "freehand", label: "自由ROI" },
   { value: "point", label: "标记点" },
+  { value: "probe", label: "探针" },
+  { value: "bidirectional", label: "双向测量" },
   { value: "text", label: "文字" },
 ]
 
