@@ -8,6 +8,7 @@
       class="viewport"
       :style="{ cursor: cursorStyle }"
       @wheel.prevent="onWheel"
+      @contextmenu.prevent
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -136,12 +137,13 @@ function onError() {
 
 function normalizePoint(event) {
   const rect = boxRef.value ? boxRef.value.getBoundingClientRect() : null
-  if (!rect || !rect.width || !rect.height) return { x: 0, y: 0, clientX: event.clientX, clientY: event.clientY }
+  if (!rect || !rect.width || !rect.height) return { x: 0, y: 0, clientX: event.clientX, clientY: event.clientY, button: event.button }
   return {
     x: clamp((event.clientX - rect.left) / rect.width),
     y: clamp((event.clientY - rect.top) / rect.height),
     clientX: event.clientX,
     clientY: event.clientY,
+    button: event.button,
   }
 }
 

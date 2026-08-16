@@ -416,6 +416,11 @@ async function placeProbe(view, point) {
 }
 
 function onPointerDown(view, point) {
+  // 右键始终调窗（PACS 惯例），与当前工具无关
+  if (point.button === 2) {
+    wlDrag.value = { clientX: point.clientX, clientY: point.clientY, ww: windowWidth.value, wl: windowLevel.value }
+    return
+  }
   if (activeTool.value === "pan") {
     panStart.value = { view, clientX: point.clientX, clientY: point.clientY, panX: panPerView.value[view].x, panY: panPerView.value[view].y }
     return
