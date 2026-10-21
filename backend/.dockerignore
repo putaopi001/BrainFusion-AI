@@ -1,0 +1,25 @@
+# Defense-in-depth for build context; Docker itself is still unverified (E5).
+uploads/
+processed/
+datasets/
+runtime/
+.conda/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+**/*.db
+**/*.sqlite*
+**/*.nii
+**/*.nii.gz
+**/*.dcm
+**/*.pt
+**/*.pth
+**/*.pkl
+**/*.joblib
+**/*.zip
+.env
+.env.*
+**/*.log
+test.txt

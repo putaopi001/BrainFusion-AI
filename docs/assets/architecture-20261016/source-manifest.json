@@ -1,0 +1,95 @@
+{
+  "format": "engineering-architecture-figures-v1",
+  "date_beijing": "2026-10-16",
+  "scope": "Current implementation and evidence boundaries, not clinical/research performance",
+  "declared_case_relationships": {
+    "pacs_study_links": [
+      "__table_args__",
+      "__tablename__",
+      "archive_id",
+      "case_id",
+      "confirmation_method",
+      "created_time",
+      "endpoint_fingerprint",
+      "id",
+      "metadata_json",
+      "metadata_sha256",
+      "study_uid"
+    ],
+    "dicom_world_measurements": [
+      "__table_args__",
+      "__tablename__",
+      "case_id",
+      "client_uid",
+      "context_json",
+      "created_time",
+      "id",
+      "length_mm",
+      "points_lps",
+      "series_uid",
+      "study_uid",
+      "view",
+      "view_plane_normal",
+      "view_up"
+    ],
+    "dicom_view_states": [
+      "__table_args__",
+      "__tablename__",
+      "case_id",
+      "client_uid",
+      "context_json",
+      "created_time",
+      "id",
+      "series_uid",
+      "state_json",
+      "study_uid"
+    ],
+    "dicom_reading_reviews": [
+      "__table_args__",
+      "__tablename__",
+      "case_id",
+      "client_uid",
+      "content_sha256",
+      "created_time",
+      "decision",
+      "id",
+      "opinion",
+      "reviewer",
+      "series_uid",
+      "snapshot_json",
+      "study_uid"
+    ],
+    "doctor_opinions": [
+      "__tablename__",
+      "author",
+      "case_id",
+      "content",
+      "created_time",
+      "id",
+      "updated_time"
+    ]
+  },
+  "source_sha256": {
+    "backend/app/models/pacs.py": "0a698822ea2795883ab6685495c86df0fa0c8679c50082baae4e2af7acabccc3",
+    "backend/app/models/dicom_measurement.py": "f9e03976a797392feb3442b68418dd00b75bf92e382dff55135cb071b5c44122",
+    "backend/app/models/dicom_view_state.py": "539defd8d34abd213e2b83f0619ca19cf8c39b9b5bb57b8feff293db0bf26950",
+    "backend/app/models/dicom_review.py": "2e7bb60a56673342fca67fcb5853aa06f35ac026f05b5a11ca0589bf862a740a",
+    "backend/app/models/doctor_opinion.py": "517ae3cb827a00e268c38c6ffea79a0320f003afd4dfcac30264bc1f2fbfe25b",
+    "backend/app/api/pacs.py": "416f39ffe6e6ae4f9df57b3a933229c37d7a4df19e8a113837805debc5b614b9",
+    "backend/app/services/dicom_review.py": "01e4ff9371e4d60b78757c2e57a40a4dc7fab0cd0ccae891581683cbfcb79f1c",
+    "backend/app/services/local_auth.py": "5b9f1e31d0c09bdeb90fda0387d7a56a31104b8cce3c05f466da400692b112ef",
+    "backend/tools/snapshot_pacs_joint.py": "6cdeaa1ec01ebb9319377fd34b3dd9ff9e0e6e1ec24516fab56104c9d9e8bf75",
+    "frontend/src/components/mri/CornerstoneViewer.vue": "94e34f82d4e9f22f17f3866f81b9ab43a89742b7682ba066ffa86670ea7cee6f",
+    "frontend/src/views/Report.vue": "591dd456a5fbd02a754a8f35179162517979bef68b200aa3bffd3393e7df1ed6"
+  },
+  "outputs": [
+    {
+      "file": "architecture-current.svg",
+      "sha256": "451ce0c9e39ed654a2fd784c743d658762172c6b2a95d537a9b51b0070ee828c"
+    },
+    {
+      "file": "dicom-data-relations.svg",
+      "sha256": "603fd38d615ab63b0772bd5567c686e26d13a56572288c5b3e2788df50ef1095"
+    }
+  ]
+}

@@ -5,6 +5,10 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.conda/
+backend/runtime/
+*.pt
+*.pth
 .pytest_cache/
 *.db
 *.sqlite3

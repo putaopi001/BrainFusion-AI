@@ -7,6 +7,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
 
+from app.core.dependencies import require_dicom_parser
+
+require_dicom_parser()
+
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.logging import get_logger, setup_logging
@@ -22,6 +26,10 @@ from app.api import predictions
 from app.api import preprocess
 from app.api import reports
 from app.api import upload
+from app.api import analysis
+from app.api import research
+from app.api import pacs
+from app.api import local_auth
 
 # models（import 以便 create_all 注册表结构）
 from app.models import annotation
@@ -33,6 +41,8 @@ from app.models import mri
 from app.models import patient
 from app.models import prediction
 from app.models import report
+from app.models import analysis_run
+from app.models import case_research_input
 
 
 setup_logging(settings.LOG_LEVEL)
@@ -55,6 +65,11 @@ def apply_schema_updates() -> None:
     # mris
     _ensure_column("mris", "preview_error", "preview_error VARCHAR")
     _ensure_column("mris", "processed_path", "processed_path VARCHAR")
+    for column in ("sequences_json", "segmentation_path", "analysis_run_id", "verified_run_id"):
+        _ensure_column("mris", column, column + " VARCHAR")
+    _ensure_column("mris", "input_source", "input_source VARCHAR(40)")
+    _ensure_column("mris", "source_provenance_json", "source_provenance_json TEXT")
+    _ensure_column("mri_annotations", "coordinate_contract", "coordinate_contract VARCHAR DEFAULT 'legacy-array-v0'")
     _ensure_column("mris", "doctor_verified", "doctor_verified BOOLEAN DEFAULT 0")
     _ensure_column("mris", "segmentation_source", "segmentation_source VARCHAR DEFAULT 'mock'")
     _ensure_column("mris", "created_time", "created_time DATETIME")
@@ -75,6 +90,7 @@ def apply_schema_updates() -> None:
     _ensure_column("patients", "updated_time", "updated_time DATETIME")
     _ensure_column("predictions", "updated_time", "updated_time DATETIME")
     _ensure_column("reports", "updated_time", "updated_time DATETIME")
+    _ensure_column("reports", "analysis_run_id", "analysis_run_id VARCHAR")
     _ensure_column("doctor_opinions", "created_time", "created_time DATETIME")
 
     # 数据迁移：历史状态对齐新的 MRI 状态机语义
@@ -99,7 +115,8 @@ app = FastAPI(
 # ======================
 # MRI 文件静态访问
 # ======================
-UPLOAD_DIR = Path(__file__).resolve().parents[1] / "uploads"
+from app.core.storage import upload_root
+UPLOAD_DIR = upload_root()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
@@ -127,6 +144,7 @@ async def app_exception_handler(request: Request, exc: AppException):
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
+        headers=exc.headers,
         content={"code": exc.status_code, "message": str(exc.detail), "detail": exc.detail, "data": None},
     )
 
@@ -152,6 +170,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # 注册 API
 # ======================
 app.include_router(upload.router)
+app.include_router(analysis.router)
+app.include_router(research.router)
+app.include_router(pacs.router)
+app.include_router(local_auth.router)
+
+@app.on_event("startup")
+def recover_analysis():
+    from app.services.analysis_jobs import recover_interrupted_jobs
+    recover_interrupted_jobs()
+    from app.services.feature_jobs import recover_interrupted
+    recover_interrupted()
+    from app.services.pacs_import import recover_interrupted as recover_pacs_imports
+    recover_pacs_imports()
 app.include_router(patients.router)
 app.include_router(cases.router)
 app.include_router(debug.router)

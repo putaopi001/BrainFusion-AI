@@ -63,9 +63,9 @@
     </div>
 
     <div class="tool-group">
-      <el-button size="small" type="success" :disabled="!pendingCount" @click="$emit('save')">保存标注</el-button>
-      <el-button size="small" :disabled="!pendingCount" @click="$emit('undo')">撤销</el-button>
-      <el-button size="small" :disabled="!pendingCount" @click="$emit('clear')">清空草稿</el-button>
+      <el-button size="small" type="success" :disabled="!pendingCount || saving" :loading="saving" @click="$emit('save')">保存标注</el-button>
+      <el-button size="small" :disabled="!pendingCount || saving" @click="$emit('undo')">撤销</el-button>
+      <el-button size="small" :disabled="!pendingCount || saving" @click="$emit('clear')">清空草稿</el-button>
       <el-button size="small" @click="$emit('reset')">重置视图</el-button>
       <el-button size="small" @click="$emit('fullscreen')">全屏</el-button>
     </div>
@@ -84,6 +84,7 @@ defineProps({
   showSegmentation: { type: Boolean, default: false },
   segmentationAvailable: { type: Boolean, default: false },
   pendingCount: { type: Number, default: 0 },
+  saving: { type: Boolean, default: false },
 })
 
 defineEmits([

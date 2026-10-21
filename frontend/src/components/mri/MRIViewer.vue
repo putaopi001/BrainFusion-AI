@@ -14,6 +14,17 @@
       </div>
     </header>
 
+    <div v-if="mode === 'volume'" class="sequence-selector">
+      <label v-if="volumeMeta?.available_sequences?.length">当前序列
+        <el-select v-model="requestedSequence" class="mri-sequence-select" style="width: 220px" :disabled="sequenceLoading" @change="switchSequence">
+          <el-option v-for="key in volumeMeta.available_sequences" :key="key" :value="key" :label="sequenceLabels[key]" />
+        </el-select>
+      </label>
+      <span class="current-sequence" :data-sequence="activeSequence || 'legacy'">{{ sequenceLabels[activeSequence] || '旧单序列：身份未标识' }}</span>
+      <el-button size="small" :loading="segmentationRefreshing" @click="refreshSegmentation()">刷新分割状态</el-button>
+      <p class="tool-hint">仅支持同患者、已配准且 shape/affine 一致的正交 1 mm 四序列；不自动配准或重采样。标注共享此物理网格。</p>
+    </div>
+
     <Toolbar
       :active-tool="activeTool"
       :annotation-type="annotationType"
@@ -23,6 +34,7 @@
       :show-segmentation="showSegmentation"
       :segmentation-available="segmentationAvailable"
       :pending-count="pendingAnnotations.length"
+      :saving="savingAnnotations"
       @tool-change="activeTool = $event"
       @annotation-type-change="onTypeChange"
       @color-change="annotationColor = $event"
@@ -37,8 +49,9 @@
     />
 
     <p v-if="toolHint" class="tool-hint">提示：{{ toolHint }}</p>
+    <p v-if="savedAnnotations.some(item => item.coordinate_contract !== 'LPS_DISPLAY_V1')" class="tool-hint">历史标注使用旧坐标或旧影像，已保留记录并隐藏叠加，请重新核对。</p>
 
-    <div v-if="isLoading" class="state">正在加载 MRI 数据…</div>
+    <div v-if="isLoading || sequenceLoading" class="state">正在加载 MRI 数据…</div>
     <div v-else-if="loadError" class="state error">{{ loadError }}</div>
     <div v-else-if="!hasAnySlices" class="state">暂无可用 MRI 预览，请先生成预览切片。</div>
 
@@ -55,6 +68,7 @@
           :width="viewWidth(view)"
           :height="viewHeight(view)"
           :shape="shape"
+          :spacing="volumeMeta?.spacing"
           :slice-index="sliceIndices[view]"
           :max-index="viewMaxIndex(view)"
           :annotations="visibleAnnotations(view)"
@@ -66,10 +80,13 @@
           :patient-name="patientName"
           :window-width="windowWidth"
           :window-level="windowLevel"
+          :sequence-label="sequenceLabels[activeSequence] || '序列未标识'"
           @pointerdown="(p) => onPointerDown(view, p)"
           @pointermove="(p) => onPointerMove(view, p)"
           @pointerup="(p) => onPointerUp(view, p)"
           @pointerleave="onPointerLeave"
+          @pointercancel="cancelInteraction"
+          @maskerror="onMaskError"
           @wheel="(payload) => onWheel(view, payload)"
         />
       </div>
@@ -102,8 +119,8 @@
         />
       </div>
 
-      <p v-if="showSegmentation && mode === 'volume'" class="seg-disclaimer">
-        AI 分割叠加为演示用模拟掩膜（红色区域），非真实模型输出。
+      <p v-if="mode === 'volume' && (showSegmentation || !segmentationAvailable)" class="seg-disclaimer">
+        {{ segmentationDisclaimer }}
       </p>
     </template>
 
@@ -116,6 +133,7 @@
         v-for="item in [...pendingAnnotations, ...savedAnnotations]"
         :key="annotationKey(item)"
         class="annotation-item"
+        :data-annotation-id="item.id || ''"
       >
         <span class="ann-type" :style="{ color: item.color }">
           {{ viewLabels[item.view] }} · 第 {{ item.slice_index + 1 }} 层 · {{ toolLabel(item.tool) }} · {{ typeLabel(item.annotation_type) }}
@@ -167,7 +185,13 @@ const isLoading = ref(true)
 const loadError = ref("")
 const mode = ref("preview") // volume | preview
 const volumeMeta = ref(null)
+const sequenceLabels = { t1c: 'T1c · 增强 T1', t1n: 'T1n · 平扫 T1', t2w: 'T2w · T2', t2f: 'FLAIR' }
+const activeSequence = ref(''), requestedSequence = ref(''), sequenceLoading = ref(false)
+const sequenceWindows = new Map()
 const segmentationAvailable = ref(false)
+const segmentationRefreshing = ref(false)
+  const segmentationDisclaimer = ref("")
+  const maskVersion = ref("")
 const showSegmentation = ref(false)
 
 const sliceIndices = ref({ axial: 0, coronal: 0, sagittal: 0 })
@@ -189,6 +213,7 @@ const note = ref("")
 
 const savedAnnotations = ref([])
 const pendingAnnotations = ref([])
+const savingAnnotations = ref(false)
 const deletingAll = ref(false)
 const draft = ref(null)
 const panStart = ref(null)
@@ -201,7 +226,7 @@ const hoverInfo = ref("")
 // ---- derived ----
 const shape = computed(() => (volumeMeta.value ? volumeMeta.value.shape : null))
 const sourceUrl = computed(() => resolveApiUrl(props.fileUrl))
-const hasAnySlices = computed(() => views.some((view) => viewSlices(view).length > 0))
+const hasAnySlices = computed(() => mode.value === "volume" || views.some((view) => viewSlices(view).length > 0))
 const allAnnotations = computed(() => [...savedAnnotations.value, ...pendingAnnotations.value])
 
 const toolHint = computed(() => {
@@ -260,7 +285,7 @@ function imageUrl(view) {
     const index = sliceIndices.value[view]
     const path =
       "/mri/" + props.caseId + "/slice/" + view + "/" + index +
-      "?ww=" + Math.round(windowWidth.value) + "&wl=" + Math.round(windowLevel.value)
+      "?ww=" + Math.round(windowWidth.value) + "&wl=" + Math.round(windowLevel.value) + (activeSequence.value ? '&sequence=' + activeSequence.value : '')
     return resolveApiUrl(path)
   }
   const slices = viewSlices(view)
@@ -270,7 +295,7 @@ function imageUrl(view) {
 
 function maskUrl(view) {
   if (!props.caseId) return ""
-  return resolveApiUrl("/mri/" + props.caseId + "/mask/" + view + "/" + sliceIndices.value[view])
+  return resolveApiUrl("/mri/" + props.caseId + "/mask/" + view + "/" + sliceIndices.value[view] + "?version=" + maskVersion.value)
 }
 
 function resolveApiUrl(path) {
@@ -285,7 +310,7 @@ function draftFor(view) {
 
 function visibleAnnotations(view) {
   const index = sliceIndices.value[view]
-  return allAnnotations.value.filter((item) => item.view === view && item.slice_index === index)
+  return allAnnotations.value.filter((item) => (!item.id || item.coordinate_contract === "LPS_DISPLAY_V1") && item.view === view && item.slice_index === index)
 }
 
 function annotationKey(annotation) {
@@ -313,6 +338,8 @@ async function init() {
         const res = await request.get("/mri/" + props.caseId + "/volume")
         const meta = res.data.data
         volumeMeta.value = meta
+        activeSequence.value = requestedSequence.value = meta.sequence || ''
+        sequenceWindows.clear()
         const s = meta.shape
         sliceIndices.value = {
           axial: Math.floor(s[0] / 2),
@@ -322,13 +349,9 @@ async function init() {
         windowWidth.value = meta.display_max - meta.display_min
         windowLevel.value = (meta.display_max + meta.display_min) / 2
         mode.value = "volume"
-        try {
-          const seg = await request.get("/mri/" + props.caseId + "/segmentation")
-          segmentationAvailable.value = !!seg.data.data.available
-        } catch (e) {
-          segmentationAvailable.value = false
-        }
+        await refreshSegmentation(false)
       } catch (e) {
+        if (e.response?.status === 422) throw e
         mode.value = "preview"
         initPreviewIndices()
       }
@@ -337,10 +360,31 @@ async function init() {
       initPreviewIndices()
     }
   } catch (e) {
-    loadError.value = "MRI 数据加载失败，请检查后端服务。"
+    loadError.value = String(e.response?.data?.detail || "MRI 数据加载失败，请检查后端服务。")
   } finally {
     isLoading.value = false
   }
+}
+
+async function switchSequence(key) {
+  if (sequenceLoading.value || key === activeSequence.value) return
+  const previous = activeSequence.value
+  sequenceLoading.value = true
+  sequenceWindows.set(previous, { ww: windowWidth.value, wl: windowLevel.value })
+  clearTimeout(hoverTimer); clearTimeout(wlTimer); hoverInfo.value = ''
+  draft.value = panStart.value = zoomDrag.value = wlDrag.value = null
+  try {
+    const meta = (await request.get(`/mri/${props.caseId}/volume`, { params: { sequence: key } })).data.data
+    if (JSON.stringify(meta.shape) !== JSON.stringify(volumeMeta.value.shape) || JSON.stringify(meta.spacing) !== JSON.stringify(volumeMeta.value.spacing) || meta.coordinate_contract !== volumeMeta.value.coordinate_contract) throw new Error('序列空间不一致；不执行自动配准或重采样。')
+    volumeMeta.value = meta; activeSequence.value = key
+    const saved = sequenceWindows.get(key)
+    windowWidth.value = saved?.ww ?? Math.max(1, meta.display_max - meta.display_min)
+    windowLevel.value = saved?.wl ?? (meta.display_max + meta.display_min) / 2
+    // Slice indices, pan/zoom, saved/pending measurements and mask version stay on the same grid.
+  } catch (e) {
+    requestedSequence.value = previous
+    ElMessage.error(String(e.response?.data?.detail || e.message))
+  } finally { sequenceLoading.value = false }
 }
 
 function initPreviewIndices() {
@@ -402,12 +446,12 @@ async function placeProbe(view, point) {
   }
   try {
     const res = await request.get("/mri/" + props.caseId + "/voxel", {
-      params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y },
+      params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y, sequence: activeSequence.value || undefined },
     })
     const data = res.data.data
     pendingAnnotations.value.push(baseAnnotation(view, "probe", {
       x: point.x, y: point.y, width: 0, height: 0,
-      note: "值 " + Math.round(data.value),
+      note: (sequenceLabels[data.sequence] || '序列未标识') + " 值 " + Math.round(data.value),
       voxel_coordinate: JSON.stringify(data.voxel),
     }))
   } catch (e) {
@@ -505,12 +549,13 @@ function scheduleHover(view, point) {
   if (mode.value !== "volume" || !props.caseId) return
   clearTimeout(hoverTimer)
   hoverTimer = setTimeout(async () => {
+    const sequence = activeSequence.value
     try {
       const res = await request.get("/mri/" + props.caseId + "/voxel", {
-        params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y },
+        params: { view, index: sliceIndices.value[view], nx: point.x, ny: point.y, sequence: sequence || undefined },
       })
       const data = res.data.data
-      hoverInfo.value = "值 " + Math.round(data.value) + " · (" + data.voxel.x + "," + data.voxel.y + "," + data.voxel.z + ")"
+      if (sequence === activeSequence.value && !sequenceLoading.value) hoverInfo.value = (sequenceLabels[sequence] || '序列未标识') + " 值 " + Math.round(data.value) + " · (" + data.voxel.x + "," + data.voxel.y + "," + data.voxel.z + ")"
     } catch (e) {
       /* ignore */
     }
@@ -613,22 +658,23 @@ function onPointerUp(view, point) {
 
   const { originX, originY, points, ...annotation } = draft.value
   if (annotation.tool === "rectangle" || annotation.tool === "ellipse" || annotation.tool === "circle") {
-    annotation.x = Math.min(originX, annotation.x)
-    annotation.y = Math.min(originY, annotation.y)
-    annotation.width = Math.abs(annotation.x - originX)
-    annotation.height = Math.abs(annotation.y - originY)
+    const endX = annotation.x, endY = annotation.y
+    annotation.x = Math.min(originX, endX)
+    annotation.y = Math.min(originY, endY)
+    annotation.width = Math.abs(endX - originX)
+    annotation.height = Math.abs(endY - originY)
     if (annotation.width <= 0.005 || annotation.height <= 0.005) {
       draft.value = null
       return
     }
     pendingAnnotations.value.push(withVoxel(annotation))
   } else if (annotation.tool === "line") {
-    const x1 = Math.min(originX, annotation.x)
-    const y1 = Math.min(originY, annotation.y)
-    annotation.x = x1
-    annotation.y = y1
-    annotation.width = Math.abs(annotation.x - originX)
-    annotation.height = Math.abs(annotation.y - originY)
+    const endX = annotation.x, endY = annotation.y
+    annotation.points = JSON.stringify([[originX, originY], [endX, endY]])
+    annotation.x = Math.min(originX, endX)
+    annotation.y = Math.min(originY, endY)
+    annotation.width = Math.abs(endX - originX)
+    annotation.height = Math.abs(endY - originY)
     if (Math.hypot(annotation.width, annotation.height) <= 0.005) {
       draft.value = null
       return
@@ -655,6 +701,12 @@ function onPointerLeave() {
   panStart.value = null
   zoomDrag.value = null
   wlDrag.value = null
+  clearTimeout(wlTimer)
+}
+
+function cancelInteraction() {
+  // Native pointer cancellation is not a completed measurement.
+  draft.value = panStart.value = zoomDrag.value = wlDrag.value = null
   clearTimeout(wlTimer)
 }
 
@@ -690,8 +742,33 @@ function resetView() {
   }
 }
 
-function toggleSegmentation() {
-  showSegmentation.value = !showSegmentation.value
+async function refreshSegmentation(notify = true) {
+  if (segmentationRefreshing.value || !props.caseId) return
+  segmentationRefreshing.value = true
+  try {
+    const data = (await request.get(`/mri/${props.caseId}/segmentation`)).data.data
+    segmentationAvailable.value = Boolean(data.available)
+    segmentationDisclaimer.value = data.disclaimer || data.stale_reason || '暂无有效分割'
+    maskVersion.value = data.analysis_run_id || String(Date.now())
+    if (!data.available) {
+      showSegmentation.value = false
+      if (notify) ElMessage.warning(segmentationDisclaimer.value)
+    }
+  } catch (e) {
+    segmentationAvailable.value = showSegmentation.value = false
+    segmentationDisclaimer.value = '分割状态读取失败；已停止旧叠加，请刷新。' + String(e.response?.data?.detail || e.message)
+  } finally { segmentationRefreshing.value = false }
+}
+
+async function onMaskError() {
+  showSegmentation.value = false
+  await refreshSegmentation()
+}
+
+async function toggleSegmentation() {
+  if (showSegmentation.value) { showSegmentation.value = false; return }
+  await refreshSegmentation()
+  if (segmentationAvailable.value) showSegmentation.value = true
 }
 
 function toggleFullscreen() {
@@ -720,14 +797,17 @@ function onKeydown(event) {
 }
 
 async function saveAnnotations() {
+  if (savingAnnotations.value || !pendingAnnotations.value.length) return
   if (!props.caseId) {
     ElMessage.warning("缺少病例 ID，无法保存标注")
     return
   }
+  savingAnnotations.value = true
   try {
-    await Promise.all(
-      pendingAnnotations.value.map((item) =>
-        request.post("/mri/" + props.caseId + "/annotations", {
+    // Remove each acknowledged draft immediately. A partial failure must not duplicate
+    // earlier successes on retry; unsaved drafts remain available for a later attempt.
+    for (const item of [...pendingAnnotations.value]) {
+      await request.post("/mri/" + props.caseId + "/annotations", {
           view: item.view,
           slice_index: item.slice_index,
           tool: item.tool,
@@ -741,15 +821,13 @@ async function saveAnnotations() {
           voxel_coordinate: item.voxel_coordinate || null,
           note: item.note || null,
           created_by: item.created_by || null,
-        }),
-      ),
-    )
-    pendingAnnotations.value = []
-    await loadAnnotations()
+        })
+      pendingAnnotations.value = pendingAnnotations.value.filter(draft => draft !== item)
+    }
     ElMessage.success("医生标注已保存")
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || "标注保存失败")
-  }
+  } finally { await loadAnnotations(); savingAnnotations.value = false }
 }
 
 function undoPending() {
@@ -799,6 +877,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearTimeout(hoverTimer); clearTimeout(wlTimer)
   window.removeEventListener("keydown", onKeydown)
 })
 </script>

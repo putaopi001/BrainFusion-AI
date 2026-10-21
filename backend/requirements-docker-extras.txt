@@ -1,0 +1,6 @@
+# Optional CPU inference and research packages for the Docker full profile.
+# Exact top-level versions already used by docker-compose.yml's previous build args.
+torch==2.11.0
+monai==1.5.2
+scikit-learn==1.7.2
+joblib==1.6.0

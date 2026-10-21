@@ -4,7 +4,7 @@
       <h1>BrainFusion AI</h1>
       <h2>脑胶质瘤 AI 辅助诊疗平台</h2>
       <p class="lead">病例管理 · MRI 影像阅片 · AI 分析 · 诊断报告 · 医生确认闭环</p>
-      <p class="disclaimer">教学与原型系统：AI 分析结果仅用于演示，不构成临床诊断建议，请以医生阅片意见为准。</p>
+      <p class="disclaimer">科研原型：真实模型分割结果需医生复核，不构成临床诊断建议。</p>
       <div class="hero-actions">
         <el-button type="primary" size="large" @click="$router.push('/cases')">进入病例管理</el-button>
         <el-button size="large" @click="$router.push('/patients')">患者管理</el-button>
@@ -71,7 +71,7 @@ async function loadStats() {
     const sysRes = await request.get("/debug/system")
     const data = sysRes.data.data || {}
     if (data.version) version.value = data.version.replace("BrainFusion-AI ", "")
-    stats.value.models = (data.models || []).length
+    stats.value.models = (data.models || []).filter(model => model.status === "ready").length
   } catch (e) {
     /* ignore */
   }

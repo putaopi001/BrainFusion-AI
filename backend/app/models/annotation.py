@@ -16,6 +16,7 @@ class MRIAnnotation(Base):
     tool = Column(String(20), nullable=False, default="rectangle")  # rectangle/point/line/text/freehand/angle
     annotation_type = Column(String(20), nullable=False, default="other")  # tumor/edema/necrosis/blood/other
     color = Column(String(20), nullable=False, default="#f97316")
+    coordinate_contract = Column(String(30), default="LPS_DISPLAY_V1")
     x = Column(Float, nullable=False)          # 归一化坐标
     y = Column(Float, nullable=False)
     width = Column(Float, nullable=False, default=0)

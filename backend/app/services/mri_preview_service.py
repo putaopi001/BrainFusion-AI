@@ -8,11 +8,8 @@ from PIL import Image
 
 def generate_mri_previews(mri_path: Path, preview_dir: Path, mri_id: int) -> list[Path]:
     """Create normalized axial, coronal, and sagittal PNG previews."""
-    if mri_path.name.lower().endswith((".nii", ".nii.gz")):
-        volume = np.squeeze(nib.load(str(mri_path)).get_fdata(dtype=np.float32))
-    else:
-        image = sitk.ReadImage(str(mri_path))
-        volume = np.squeeze(sitk.GetArrayFromImage(image)).astype(np.float32)
+    from app.services.mri_service import load_volume, extract_slice
+    volume = load_volume(mri_path)[0]
     if volume.ndim != 3:
         raise ValueError("MRI preview generation requires a 3D image volume")
 
@@ -23,9 +20,9 @@ def generate_mri_previews(mri_path: Path, preview_dir: Path, mri_id: int) -> lis
 
     preview_dir.mkdir(parents=True, exist_ok=True)
     views = {
-        "axial": (volume.shape[0], lambda index: volume[index, :, :]),
-        "coronal": (volume.shape[1], lambda index: volume[:, index, :]),
-        "sagittal": (volume.shape[2], lambda index: volume[:, :, index]),
+        "axial": (volume.shape[0], lambda index: extract_slice(normalized, "axial", index)),
+        "coronal": (volume.shape[1], lambda index: extract_slice(normalized, "coronal", index)),
+        "sagittal": (volume.shape[2], lambda index: extract_slice(normalized, "sagittal", index)),
     }
     preview_paths = []
     for view_name, (view_size, get_slice) in views.items():

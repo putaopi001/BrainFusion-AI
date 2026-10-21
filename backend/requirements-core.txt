@@ -1,12 +1,20 @@
 # BrainFusion-AI Web 服务核心依赖（运行后端所需的最小集合）
-# 重型 AI 依赖（torch / nnunetv2 / monai 等）见 requirements.txt，仅本地训练/推理使用
+# requirements.txt是历史扩展清单，不是当前实测安装锁；不要用它升级主CUDA。
+# 当前观测摘要/清单角色见requirements-local-validated.txt及docs/ENVIRONMENT_INVENTORY.md。
 fastapi==0.141.1
 uvicorn==0.52.0
 sqlalchemy==2.0.51
 pydantic==2.13.4
 pydantic-settings==2.14.2
 python-multipart==0.0.32
+# PACS read client is imported by the current app and DICOM CLI services.
+httpx==0.28.1
 nibabel==5.4.2
 simpleitk==2.5.6
 numpy==2.2.6
-pillow==12.3.0
+# Pillow 12.3.0 has no CPython 3.10 Linux wheel; 12.2.0 remains compatible.
+pillow==12.2.0
+scipy==1.15.3
+
+# Current app imports PACS preparation/receipt services at startup.
+pydicom==3.0.2

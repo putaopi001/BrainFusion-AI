@@ -23,7 +23,7 @@
     </g>
 
     <!-- saved + pending annotations -->
-    <g v-for="annotation in annotations" :key="annotationKey(annotation)">
+    <g v-for="annotation in annotations" :key="annotationKey(annotation)" :data-annotation-id="annotation.id || ''">
       <rect
         v-if="annotation.tool === 'rectangle'"
         :x="annotation.x * width"
@@ -111,10 +111,10 @@
       </g>
       <g v-else-if="annotation.tool === 'line'">
         <line
-          :x1="annotation.x * width"
-          :y1="annotation.y * height"
-          :x2="(annotation.x + annotation.width) * width"
-          :y2="(annotation.y + annotation.height) * height"
+          :x1="linePoints(annotation)[0][0] * width"
+          :y1="linePoints(annotation)[0][1] * height"
+          :x2="linePoints(annotation)[1][0] * width"
+          :y2="linePoints(annotation)[1][1] * height"
           :stroke="annotation.color"
           class="shape"
         />
@@ -158,7 +158,7 @@
             :fill="annotation.color"
             font-size="14"
             class="label-text"
-          >{{ angleDegrees(anglePoints(annotation)) }}°</text>
+          >{{ angleDegrees(anglePoints(annotation), physicalDims().width, physicalDims().height) }}°</text>
         </template>
       </g>
       <text
@@ -169,6 +169,8 @@
         font-size="16"
         class="label-text"
       >{{ annotation.note || "" }}</text>
+
+      <text v-if="['rectangle', 'freehand'].includes(annotation.tool)" :x="annotation.x * width" :y="annotation.y * height - 22" :fill="annotation.color" font-size="14" class="label-text">{{ roiAreaLabel(annotation) }}</text>
 
       <!-- optional note label -->
       <text
@@ -292,6 +294,7 @@ const props = defineProps({
   draft: { type: Object, default: null },
   crosshair: { type: Object, default: null },
   shape: { type: Array, default: null },
+  spacing: { type: Array, default: null },
 })
 
 const viewBox = computed(() => "0 0 " + props.width + " " + props.height)
@@ -316,16 +319,23 @@ function draftPolylinePoints(draft) {
   return pts.map((p) => p[0] * props.width + "," + p[1] * props.height).join(" ")
 }
 
+function linePoints(annotation) {
+  const points = parsePoints(annotation.points)
+  return points.length === 2 ? points : [[annotation.x, annotation.y], [annotation.x + annotation.width, annotation.y + annotation.height]]
+}
+function physicalDims() {
+  const d = sliceDims(props.shape, props.view)
+  return { width: (d.width - 1) * (props.spacing?.[d.colAxis] || 1), height: (d.height - 1) * (props.spacing?.[d.rowAxis] || 1) }
+}
 function lineLengthLabel(annotation) {
   if (!props.shape) return ""
-  const { width, height } = sliceDims(props.shape, props.view)
-  const px = Math.hypot(annotation.width * width, annotation.height * height)
-  return px.toFixed(1) + " px"
+  const { width, height } = physicalDims(), [a, b] = linePoints(annotation)
+  return Math.hypot((b[0] - a[0]) * width, (b[1] - a[1]) * height).toFixed(1) + (props.spacing ? " mm" : " px")
 }
 
 function roiAreaLabel(annotation) {
   if (!props.shape) return ""
-  return roiAreaUtil(annotation, props.shape, props.view)
+  return roiAreaUtil(annotation, props.shape, props.view, props.spacing)
 }
 
 function bidirectionalLines(annotation) {
@@ -335,10 +345,10 @@ function bidirectionalLines(annotation) {
 function bidirectionalLabel(annotation) {
   const lines = bidirectionalLines(annotation)
   if (!props.shape || lines.length < 2) return ""
-  const { width, height } = sliceDims(props.shape, props.view)
+  const { width, height } = physicalDims()
   const l1 = Math.hypot((lines[0][2] - lines[0][0]) * width, (lines[0][3] - lines[0][1]) * height)
   const l2 = Math.hypot((lines[1][2] - lines[1][0]) * width, (lines[1][3] - lines[1][1]) * height)
-  return l1.toFixed(1) + " / " + l2.toFixed(1) + " px"
+  return l1.toFixed(1) + " / " + l2.toFixed(1) + (props.spacing ? " mm" : " px")
 }
 </script>
 

@@ -1,0 +1,4 @@
+# Pinned wheel for bounded DICOM tooling on Python>=3.10.
+# The same package is mandatory in requirements-core for current app startup.
+# Keep this hash-pinned tool recipe separate; do not change the radiomics worker.
+pydicom==3.0.2 --hash=sha256:abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b

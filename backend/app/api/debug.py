@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from pathlib import Path
 
 from app.core.config import settings
 from app.core.response import success
@@ -13,10 +14,8 @@ def system_info():
         data={
             "version": f"BrainFusion-AI v{settings.VERSION}",
             "models": [
-                {"name": "MRI Baseline Model", "status": "active"},
-                {"name": "TabICL-v2", "status": "active"},
-                {"name": "Fusion Model", "status": "active"},
-                {"name": "Clinical Agent", "status": "active"},
+                {"name": "MONAI BraTS SegResNet", "status": "ready" if (Path(settings.MODEL_DIR) / "models/model.pt").is_file() else "weights_missing"},
             ],
+            "planned_models": ["IDH classifier", "TOPSIS fusion", "simulated federated model"],
         }
     )

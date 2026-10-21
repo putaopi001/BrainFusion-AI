@@ -10,12 +10,14 @@ from app.models.mri import MRI
 from app.models.prediction import Prediction
 from app.models.report import Report
 from app.services.mri_preview_service import generate_mri_previews
+from app.api.analysis import ensure_idle, submission_lock
+from app.models.annotation import MRIAnnotation
+from app.core.storage import upload_root
 
 
 router = APIRouter(prefix="", tags=["upload"])
 
-UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
-BACKEND_DIR = UPLOAD_DIR.parent
+UPLOAD_DIR = upload_root()
 ALLOWED_SUFFIXES = (".nii", ".nii.gz", ".dcm")
 MAX_UPLOAD_SIZE = 2 * 1024 * 1024 * 1024
 
@@ -34,6 +36,7 @@ async def upload_mri(
     if not case:
         raise HTTPException(status_code=404, detail="case not found")
 
+    ensure_idle(case_id, db)
     original_filename = Path(file.filename or "").name
     if not original_filename or not is_allowed_mri(original_filename):
         raise HTTPException(
@@ -55,45 +58,51 @@ async def upload_mri(
                     raise HTTPException(status_code=413, detail="MRI file is too large")
                 buffer.write(chunk)
 
-        relative_path = destination.relative_to(UPLOAD_DIR).as_posix()
-        web_path = f"/uploads/{relative_path}"
-        mri = db.query(MRI).filter(MRI.case_id == case_id).first()
+        with submission_lock:
+            db.expire_all()
+            ensure_idle(case_id, db)
+            relative_path = destination.relative_to(UPLOAD_DIR).as_posix()
+            web_path = f"/uploads/{relative_path}"
+            mri = db.query(MRI).filter(MRI.case_id == case_id).first()
 
-        if mri is None:
-            mri = MRI(case_id=case_id)
-            db.add(mri)
-            db.flush()
+            if mri is None:
+                mri = MRI(case_id=case_id)
+                db.add(mri)
+                db.flush()
 
-        previous_path = mri.filepath
-        mri.filename = original_filename
-        storage_path = destination.relative_to(BACKEND_DIR).as_posix()
-        mri.filepath = storage_path
-        mri.web_path = web_path
-        mri.slice_path = None
-        mri.preview_error = None
-        mri.modality = "MRI"
-        mri.status = "processing"
-        case.mri_path = storage_path
-        case.status = "uploaded"
+            db.query(MRIAnnotation).filter(MRIAnnotation.mri_id == mri.id).update({"coordinate_contract": "obsolete-input"})
+            mri.sequences_json = mri.segmentation_path = mri.analysis_run_id = mri.verified_run_id = None
+            mri.doctor_verified = False
+            mri.segmentation_source = "unavailable"
+            mri.filename = original_filename
+            storage_path = str(destination.resolve())
+            mri.filepath = storage_path
+            mri.web_path = web_path
+            mri.slice_path = None
+            mri.preview_error = None
+            mri.modality = "MRI"
+            mri.status = "processing"
+            case.mri_path = storage_path
+            case.status = "uploaded"
 
-        preview_paths = []
-        if original_filename.lower().endswith((".nii", ".nii.gz")):
-            try:
-                preview_paths = generate_mri_previews(destination, case_dir / "previews", mri.id)
-                mri.slice_path = str(preview_paths[0])
-                mri.status = "preview_ready"
-            except Exception as error:
-                mri.preview_error = f"{type(error).__name__}: {error}"
+            preview_paths = []
+            if original_filename.lower().endswith((".nii", ".nii.gz")):
+                try:
+                    preview_paths = generate_mri_previews(destination, case_dir / "previews", mri.id)
+                    mri.slice_path = str(preview_paths[0])
+                    mri.status = "preview_ready"
+                except Exception as error:
+                    mri.preview_error = f"{type(error).__name__}: {error}"
+                    mri.status = "failed"
+            else:
+                mri.preview_error = "DICOM preview is not supported for a single uploaded file."
                 mri.status = "failed"
-        else:
-            mri.preview_error = "DICOM preview is not supported for a single uploaded file."
-            mri.status = "failed"
 
-        db.query(Prediction).filter(Prediction.case_id == case_id).delete()
-        db.query(Report).filter(Report.case_id == case_id).delete()
+            db.query(Prediction).filter(Prediction.case_id == case_id).delete()
+            # Preserve historical model reports; detail API only exposes the current run.
 
-        db.commit()
-        db.refresh(mri)
+            db.commit()
+            db.refresh(mri)
     except Exception:
         db.rollback()
         destination.unlink(missing_ok=True)
@@ -101,16 +110,7 @@ async def upload_mri(
     finally:
         await file.close()
 
-    if previous_path and previous_path != str(destination):
-        previous = Path(previous_path)
-        if not previous.is_absolute():
-            previous = BACKEND_DIR / previous
-        try:
-            previous.relative_to(UPLOAD_DIR)
-        except ValueError:
-            previous = None
-        if previous:
-            previous.unlink(missing_ok=True)
+    # Preserve prior input files for reproducible historical runs.
 
     return {
         "code": 200,

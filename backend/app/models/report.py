@@ -10,6 +10,7 @@ class Report(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     case_id = Column(Integer, index=True)
+    analysis_run_id = Column(String, nullable=True)
     risk_level = Column(String)          # 综合风险等级
     summary = Column(Text)               # AI 总结（JSON 列表字符串）
     recommendation = Column(Text)        # 推荐措施（JSON 列表字符串）

@@ -23,7 +23,7 @@ export function crosshair(view, sliceIndices, shape) {
   const rowIndex = sliceIndices[AXIS_VIEWS[rowAxis]]
   return {
     x: shape[colAxis] > 1 ? colIndex / (shape[colAxis] - 1) : 0.5,
-    y: shape[rowAxis] > 1 ? rowIndex / (shape[rowAxis] - 1) : 0.5,
+    y: shape[rowAxis] > 1 ? (view === "axial" ? rowIndex : shape[rowAxis] - 1 - rowIndex) / (shape[rowAxis] - 1) : 0.5,
   }
 }
 
@@ -34,6 +34,7 @@ export function voxelCoordinate(view, sliceIndex, nx, ny, shape) {
   coord[VIEW_AXIS[view]] = sliceIndex
   coord[colAxis] = Math.round(nx * (shape[colAxis] - 1))
   coord[rowAxis] = Math.round(ny * (shape[rowAxis] - 1))
+  if (view !== "axial") coord[rowAxis] = shape[rowAxis] - 1 - coord[rowAxis]
   return { x: coord[0], y: coord[1], z: coord[2] }
 }
 
@@ -46,11 +47,11 @@ export function lineLengthLabel(annotation, shape, view) {
 }
 
 // 角度（points = [[vx,vy],[a1x,a1y],[a2x,a2y]] 归一化）换算为度数。
-export function angleDegrees(points) {
+export function angleDegrees(points, width = 1, height = 1) {
   if (!Array.isArray(points) || points.length < 3) return 0
   const [v, a, b] = points
-  const v1 = { x: a[0] - v[0], y: a[1] - v[1] }
-  const v2 = { x: b[0] - v[0], y: b[1] - v[1] }
+  const v1 = { x: (a[0] - v[0]) * width, y: (a[1] - v[1]) * height }
+  const v2 = { x: (b[0] - v[0]) * width, y: (b[1] - v[1]) * height }
   const m1 = Math.hypot(v1.x, v1.y)
   const m2 = Math.hypot(v2.x, v2.y)
   if (!m1 || !m2) return 0
@@ -59,15 +60,26 @@ export function angleDegrees(points) {
 }
 
 // 椭圆 / 圆形 ROI 面积标签（体素单位）
-export function roiAreaLabel(annotation, shape, view) {
+export function roiAreaLabel(annotation, shape, view, spacing = null) {
   if (!shape) return ""
   const { width, height } = sliceDims(shape, view)
-  const w = annotation.width * width
-  const h = annotation.height * height
+  const { colAxis, rowAxis } = sliceDims(shape, view)
+  const w = annotation.width * (width - 1) * (spacing?.[colAxis] || 1)
+  const h = annotation.height * (height - 1) * (spacing?.[rowAxis] || 1)
+  if (annotation.tool === 'rectangle') return Math.abs(w * h).toFixed(1) + (spacing ? ' mm²' : ' px²')
+  if (annotation.tool === 'freehand') {
+    const points = parsePoints(annotation.points)
+    const normalized = points.reduce((sum, p, i) => {
+      const next = points[(i + 1) % points.length]
+      return sum + p[0] * next[1] - next[0] * p[1]
+    }, 0)
+    const area = Math.abs(normalized) / 2 * (width - 1) * (height - 1) * (spacing?.[colAxis] || 1) * (spacing?.[rowAxis] || 1)
+    return area.toFixed(1) + (spacing ? ' mm²' : ' px²')
+  }
   const area = annotation.tool === "circle"
-    ? Math.PI * (Math.max(w, h) / 2) * (Math.max(w, h) / 2)
+    ? Math.PI * (Math.max(annotation.width * (width - 1), annotation.height * (height - 1)) / 2) ** 2 * (spacing?.[colAxis] || 1) * (spacing?.[rowAxis] || 1)
     : Math.PI * (w / 2) * (h / 2)
-  return area.toFixed(1) + " px²"
+  return area.toFixed(1) + (spacing ? " mm²" : " px²")
 }
 
 export function parsePoints(value) {

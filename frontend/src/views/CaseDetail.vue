@@ -1,6 +1,11 @@
 <template>
 
 <div class="page">
+<h1 v-if="!caseLoaded">病例详情</h1>
+<el-alert v-if="loadError" :title="loadError" type="error" :closable="false" data-testid="case-load-error" />
+<el-button v-if="loadError" @click="router.push('/cases')">返回病例管理</el-button>
+<el-skeleton v-if="loadingDetail" :rows="4" animated />
+<template v-if="caseLoaded">
 
 
 <h1>
@@ -82,6 +87,7 @@ class="box"
 
 
 <!-- MRI信息 -->
+<PacsPanel v-if="caseId" :key="caseId" :case-id="Number(caseId)" @input-activated="refreshAfterInputActivation" />
 
 
 <el-card
@@ -113,7 +119,7 @@ MRI影像信息
 <el-tag v-if="detail.mri" :type="mriStatusType" size="small">{{ mriStatusLabel }}</el-tag>
 </p>
 
-<p v-if="detail.mri?.doctor_verified">
+<p v-if="currentVerified">
 医生确认:
 <el-tag type="success" size="small">已确认 AI 结果</el-tag>
 </p>
@@ -145,6 +151,7 @@ class="box"
 
 
 <MRIViewer
+:key="(detail.mri?.file_url || '') + (detail.analysis?.id || '') + (detail.analysis?.state || '')"
 
 v-if="detail.mri?.file_url"
 
@@ -216,7 +223,7 @@ type="warning"
 
 <el-alert
 
-v-if="!detail.prediction"
+v-if="!detail.analysis"
 
 class="box"
 
@@ -229,191 +236,24 @@ type="info"
 />
 
 
-<el-card
-class="box"
-
-v-if="detail.prediction"
->
-
-
-<template #header>
-
-BrainFusion AI分析结果
-
-</template>
-
-
-
-<el-alert
-
-class="ai-disclaimer"
-
-type="info"
-
-:closable="false"
-
-title="教学与原型工具：AI 分析结果仅用于演示，不构成临床诊断建议，请以医生阅片意见为准。"
-
-/>
-
-
-
-<p>
-
-模型版本:
-
-{{ detail.prediction?.model_version || "未记录" }}
-
-</p>
-
-
-
-<p>
-
-生成时间:
-
-{{ formatTime(detail.prediction?.created_time) }}
-
-</p>
-
-
-
-<p>
-
-MRI肿瘤概率:
-
-{{percent(detail.prediction?.tumor_probability)}}
-
-</p>
-
-
-
-<el-progress
-
-:percentage="safePercent(detail.prediction?.tumor_probability)"
-
-/>
-
-
-
-
-
-<p>
-
-临床风险评分:
-
-{{percent(detail.prediction?.risk_score)}}
-
-</p>
-
-
-
-<el-progress
-
-:percentage="safePercent(detail.prediction?.risk_score)"
-
-/>
-
-
-
-
-
-<p>
-
-融合评分:
-
-{{percent(detail.prediction?.fusion_score)}}
-
-</p>
-
-
-
-<el-progress
-
-:percentage="safePercent(detail.prediction?.fusion_score)"
-
-/>
-
-
-
-
-
-
-
-<p>
-风险等级:
-</p>
-
-
-
-<el-tag
-
-v-if="detail.prediction?.risk_level==='high'"
-
-type="danger"
-
->
-
-高风险
-
-</el-tag>
-
-
-
-<el-tag
-
-v-else-if="detail.prediction?.risk_level==='medium'"
-
-type="warning"
-
->
-
-中风险
-
-</el-tag>
-
-
-
-<el-tag
-
-v-else
-
-type="success"
-
->
-
-低风险
-
-</el-tag>
-
-
-<div class="verify-row">
-
-<el-button
-
-v-if="detail.mri && !detail.mri.doctor_verified"
-
-type="primary"
-
-size="small"
-
-:loading="verifying"
-
-@click="verifyAI"
-
->
-确认 AI 结果
-</el-button>
-
-<el-tag v-else-if="detail.mri?.doctor_verified" type="success" size="small">医生已确认 AI 结果</el-tag>
-
-<small class="verify-hint">医生确认后记录 doctor_verified，仅作为阅片闭环记录。</small>
-
-</div>
-
-
-
+<el-card class="box" v-if="detail.analysis">
+  <template #header>真实 MRI 分割分析</template>
+  <p>任务状态：{{ detail.analysis.state }}</p>
+  <p>分析版本：{{ detail.analysis.id }}</p>
+  <p v-if="detail.analysis.error">{{ detail.analysis.error }}</p>
+  <p v-if="detail.analysis.stale">结果已失效，请重新分析；历史记录保留，不作为当前体积、医生确认或报告。</p>
+  <template v-if="detail.analysis.state === 'succeeded' && !detail.analysis.stale && detail.analysis.result">
+    <p>模型：{{ detail.analysis.result.model }}</p>
+    <p v-for="(value, region) in detail.analysis.result.volumes_ml" :key="region">{{ region }}：{{ value }} mL</p>
+    <div class="verify-row">
+      <el-button v-if="!currentVerified" type="primary" :loading="verifying" @click="verifyAI">确认当前分割结果</el-button>
+      <el-tag v-else type="success">医生已确认当前版本</el-tag>
+      <el-button @click="router.push(`/research?case_id=${caseId}`)">自动掩膜特征研究</el-button>
+    </div>
+  </template>
 </el-card>
+
+<el-alert v-if="detail.legacy_outputs?.has_prediction || detail.legacy_outputs?.has_report" class="box" title="此病例的历史占位结果已归档，不作为当前模型结果或报告。请完成四序列真实分析。" type="warning" :closable="false" />
 
 
 
@@ -452,9 +292,7 @@ AI诊断报告
 
 <h3>
 
-风险等级:
-
-{{riskText}}
+研究限制：当前分割不提供临床风险或生存预测。
 
 </h3>
 
@@ -521,161 +359,7 @@ v-for="item in recommendations"
 
 
 
-<!-- 影像组学 + 生存预测 -->
-
-
-<el-card
-class="box"
->
-
-
-<template #header>
-影像组学与生存预测
-</template>
-
-
-
-<el-button
-size="small"
-type="info"
-:loading="loadingSurvival"
-@click="loadSurvival"
->
-{{ survivalData ? "重新计算" : "查看影像组学与生存预测" }}
-</el-button>
-
-
-
-<div
-v-if="survivalData"
-class="survival-box"
->
-
-
-<div class="survival-risk">
-
-
-<span>
-生存风险等级：
-</span>
-
-
-
-<el-tag
-:type="survivalTagType"
->
-{{ survivalLevelText }}
-</el-tag>
-
-
-
-<span class="survival-months">
-预估生存期：{{ survivalData.survival.estimated_survival_months }} 个月
-</span>
-
-
-
-</div>
-
-
-
-<h4>
-影像组学特征
-</h4>
-
-
-
-<table class="survival-table">
-
-
-<tbody>
-
-
-<tr
-v-for="(val, key) in survivalData.radiomics.intensity"
-:key="key"
->
-
-
-<td>
-{{ key }}
-</td>
-
-
-
-<td>
-{{ typeof val === 'number' ? val.toFixed(2) : val }}
-</td>
-
-
-
-</tr>
-
-
-
-<tr>
-
-
-<td>
-tumor_fraction
-</td>
-
-
-
-<td>
-{{ (survivalData.radiomics.shape.tumor_fraction * 100).toFixed(2) }}%
-</td>
-
-
-
-</tr>
-
-
-
-<tr>
-
-
-<td>
-entropy
-</td>
-
-
-
-<td>
-{{ survivalData.radiomics.entropy }}
-</td>
-
-
-
-</tr>
-
-
-
-</tbody>
-
-
-</table>
-
-
-
-<p class="survival-hint">
-影像组学与生存预测为科研原型级启发式实现，非临床模型，结果仅供演示。
-</p>
-
-
-
-</div>
-
-
-
-</el-card>
-
-
-
-
-
-
-
+<el-card class="box"><template #header>生存预测</template><p>尚未接入经过验证的生存模型，当前不提供生存期或风险估计。</p></el-card>
 
 <!-- 操作 -->
 
@@ -752,6 +436,7 @@ type="success"
 
 
 
+</template>
 </div>
 
 
@@ -766,10 +451,11 @@ type="success"
 
 
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import request from "../api/axios";
 import MRIViewer from "../components/mri/MRIViewer.vue";
+import PacsPanel from "../components/PacsPanel.vue";
 import { ElMessage } from "element-plus";
 import { useCaseStore } from "../stores/case";
 import { useMriStore } from "../stores/mri";
@@ -780,6 +466,11 @@ const route = useRoute();
 const router = useRouter();
 
 const detail = ref({});
+const caseLoaded = ref(false);
+const loadingDetail = ref(false);
+const loadError = ref("");
+let loadVersion = 0;
+let detailController;
 const doctorOpinion = ref({ author: "", content: "", updated_time: null });
 const savingOpinion = ref(false);
 const verifying = ref(false);
@@ -791,7 +482,11 @@ const mriStore = useMriStore();
 const aiStore = useAiStore();
 const reportStore = useReportStore();
 
-const caseId = computed(() => String(route.params.id || ""));
+const caseId = computed(() => {
+  const id = String(route.params.id || "");
+  return /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id)) ? id : "";
+});
+const currentVerified = computed(() => Boolean(detail.value.mri?.doctor_verified && detail.value.analysis?.state === 'succeeded' && !detail.value.analysis.stale && detail.value.mri?.verified_run_id === detail.value.analysis.id));
 
 // --- 辅助函数 ---
 
@@ -881,20 +576,71 @@ const survivalTagType = computed(() => {
 
 // --- 业务逻辑函数 ---
 
+function clearCaseContext() {
+  caseLoaded.value = false;
+  detail.value = {};
+  doctorOpinion.value = { author: "", content: "", updated_time: null };
+  survivalData.value = null;
+  caseStore.clear();
+  mriStore.clear();
+  aiStore.clear();
+  reportStore.clear();
+}
+
 async function loadDetail() {
+  const id = caseId.value;
+  const version = ++loadVersion;
+  detailController?.abort();
+  clearCaseContext();
+  loadError.value = "";
+  loadingDetail.value = false;
+  if (!id) {
+    loadError.value = "病例链接无效，请从病例管理选择病例。";
+    return;
+  }
+  detailController = new AbortController();
+  const signal = detailController.signal;
+  loadingDetail.value = true;
   try {
-    let res = await request.get(`/cases/${caseId.value}/detail`);
-    console.log("CASE DETAIL:", res.data);
-    detail.value = res.data.data;
-    // 同步到 Pinia 全局状态
-    caseStore.setCurrentCase(Number(caseId.value), detail.value);
-    mriStore.setMri(detail.value.mri);
-    aiStore.setPrediction(detail.value.prediction);
-    reportStore.setReport(detail.value.report);
-    // 加载完详情后，加载医生意见
-    await loadDoctorOpinion();
+    const res = await request.get(`/cases/${id}/detail`, { signal });
+    if (version !== loadVersion || id !== caseId.value) return;
+    const data = res.data.data;
+    if (String(data?.case?.id) !== id) throw new Error("病例响应身份不一致");
+    detail.value = data;
+    caseStore.setCurrentCase(Number(id), data);
+    mriStore.setMri(data.mri);
+    aiStore.setPrediction(data.prediction);
+    reportStore.setReport(data.report);
+    caseLoaded.value = true;
+    await loadDoctorOpinion(id, version, signal);
   } catch (error) {
-    console.error("加载病例失败", error);
+    if (signal.aborted || version !== loadVersion || id !== caseId.value) return;
+    clearCaseContext();
+    loadError.value = error.response?.status === 404
+      ? "病例不存在，请返回病例管理选择病例。"
+      : "病例加载失败，请检查本机服务后重试。";
+    // Diagnostic identity/status only; never log patient payloads or raw Axios objects.
+    console.error("加载病例失败", { caseId: id, status: error.response?.status || null });
+  } finally {
+    if (version === loadVersion) loadingDetail.value = false;
+  }
+}
+
+
+async function refreshAfterInputActivation() {
+  const id = caseId.value;
+  try {
+    const res = await request.get(`/cases/${id}/detail`);
+    const data = res.data.data;
+    if (id !== caseId.value || String(data?.case?.id) !== id) return;
+    // Refresh current MRI/results in place so the PACS dialog and audit context remain visible.
+    detail.value = data;
+    caseStore.setCurrentCase(Number(id), data);
+    mriStore.setMri(data.mri);
+    aiStore.setPrediction(data.prediction);
+    reportStore.setReport(data.report);
+  } catch (error) {
+    if (id === caseId.value) loadError.value = '当前输入已切换；病例详情刷新失败，请手动刷新页面。';
   }
 }
 
@@ -921,13 +667,13 @@ async function regeneratePreview() {
   }
 }
 
-async function loadDoctorOpinion() {
-  if (!caseId.value) return;
+async function loadDoctorOpinion(id = caseId.value, version = loadVersion, signal = detailController?.signal) {
+  if (!id) return;
   try {
-    const response = await request.get(`/cases/${caseId.value}/doctor-opinion`);
-    doctorOpinion.value = response.data.data;
+    const response = await request.get(`/cases/${id}/doctor-opinion`, { signal });
+    if (version === loadVersion && id === caseId.value && caseLoaded.value) doctorOpinion.value = response.data.data;
   } catch (error) {
-    console.error("doctor opinion load failed", error);
+    if (!signal?.aborted && version === loadVersion) console.error("医生意见加载失败", { caseId: id, status: error.response?.status || null });
   }
 }
 
@@ -950,7 +696,8 @@ async function saveDoctorOpinion() {
 async function verifyAI() {
   verifying.value = true;
   try {
-    await request.post("/mri/" + caseId.value + "/verify");
+    if (detail.value.analysis?.state !== "succeeded") throw new Error("请先完成真实模型分析");
+    await request.post("/mri/" + caseId.value + "/verify", null, { params: { run_id: detail.value.analysis.id } });
     await loadDetail();
     ElMessage.success("已确认 AI 结果");
   } catch (error) {
@@ -973,21 +720,15 @@ async function loadSurvival() {
 }
 
 function formatTime(value) {
-  return value ? new Date(value).toLocaleString() : "";
+  return value ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) + '（北京时间）' : "";
 }
 
 // --- 生命周期 ---
 
-onMounted(() => {
-  if (caseId.value) {
-    loadDetail();
-  }
-});
-
-watch(caseId, (id) => {
-  if (id) {
-    loadDetail();
-  }
+watch(caseId, loadDetail, { immediate: true });
+onBeforeUnmount(() => {
+  ++loadVersion;
+  detailController?.abort();
 });
 </script>
 

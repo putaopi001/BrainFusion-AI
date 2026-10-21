@@ -8,6 +8,7 @@ def serialize_annotation(item: MRIAnnotation) -> dict:
     """Convert an MRIAnnotation ORM object to a JSON-friendly dict."""
     return {
         "id": item.id,
+        "coordinate_contract": item.coordinate_contract,
         "mri_id": item.mri_id,
         "case_id": item.case_id,
         "view": item.view,

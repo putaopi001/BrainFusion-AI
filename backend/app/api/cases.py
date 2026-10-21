@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
@@ -14,24 +15,25 @@ from app.models.doctor_opinion import DoctorOpinion
 from app.schemas.case import CaseCreate
 from app.schemas.doctor_opinion import DoctorOpinionUpdate
 from app.services import mri_service
-from app.services.radiomics_service import extract_radiomics
-from app.services.survival_service import predict_survival
+from app.services.current_report import current_model_report
+from app.core.time import utc_iso
+from app.core.storage import public_upload_path
 
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
 
-def public_upload_path(path: str | None) -> str | None:
-    if not path:
+def source_lineage_summary(mri):
+    if not mri:
         return None
-    normalized = path.replace("\\", "/")
-    marker = "/uploads/"
-    index = normalized.lower().find(marker)
-    if index >= 0:
-        return normalized[index:]
-    if normalized.startswith("uploads/"):
-        return f"/{normalized}"
-    return None
+    if mri.input_source != "dicom-conversion" or not mri.source_provenance_json:
+        return {"input_source": mri.input_source or "legacy"}
+    try:
+        value = json.loads(mri.source_provenance_json)
+        return {key: value.get(key) for key in ("format", "conversion_version_id", "plan_revision",
+                "model_input_contract", "archive_id", "study_uid", "activated_utc", "inference_performed")}
+    except (ValueError, TypeError):
+        return {"input_source": "dicom-conversion", "integrity_status": "invalid"}
 
 
 def preview_urls(slice_path: str | None) -> list[str]:
@@ -137,8 +139,16 @@ def case_detail(case_id: int, db: Session = Depends(get_db)):
 
     patient = db.query(Patient).filter(Patient.id == case.patient_id).first()
     mri = db.query(MRI).filter(MRI.case_id == case_id).order_by(MRI.id.desc()).first()
-    prediction = db.query(Prediction).filter(Prediction.case_id == case_id).order_by(Prediction.id.desc()).first()
-    report = db.query(Report).filter(Report.case_id == case_id).order_by(Report.id.desc()).first()
+    # Preserve legacy rows, but never present their unvalidated values as current.
+    legacy_prediction = db.query(Prediction).filter(Prediction.case_id == case_id).first()
+    legacy_report = db.query(Report).filter(Report.case_id == case_id, Report.analysis_run_id.is_(None)).first()
+    report = current_model_report(mri, db)
+    from app.models.analysis_run import AnalysisRun
+    from app.services.artifact_integrity import current_analysis
+    run = db.get(AnalysisRun, mri.analysis_run_id) if mri and mri.analysis_run_id else None
+    if run and (run.case_id != case.id or run.mri_id != mri.id):
+        run = None
+    analysis = current_analysis(mri, run) if run else None
     previews = preview_urls(mri.slice_path) if mri else []
     views = preview_views(mri.slice_path) if mri else {"axial": [], "coronal": [], "sagittal": []}
 
@@ -162,21 +172,27 @@ def case_detail(case_id: int, db: Session = Depends(get_db)):
                 "preview_error": mri.preview_error if mri else None,
                 "modality": mri.modality if mri else "",
                 "status": mri.status if mri else "",
+                "doctor_verified": bool(mri and mri.doctor_verified and analysis and not analysis['stale']),
+                "input_source": mri.input_source if mri and mri.input_source else ("legacy" if mri else None),
+                "source_provenance": source_lineage_summary(mri),
+                "analysis_run_id": mri.analysis_run_id if mri else None,
+                "verified_run_id": mri.verified_run_id if mri else None,
             },
-            "prediction": {
-                "tumor_probability": prediction.tumor_probability,
-                "risk_score": prediction.risk_score,
-                "fusion_score": prediction.fusion_score,
-                "risk_level": prediction.risk_level,
-                "model_version": prediction.model_version,
-                "created_time": prediction.created_time.isoformat() if prediction.created_time else None,
-            } if prediction else None,
+            "prediction": None,
+            "legacy_outputs": {
+                "available": False,
+                "has_prediction": bool(legacy_prediction),
+                "has_report": bool(legacy_report),
+                "reason": "Historical unvalidated outputs are excluded from current results and PDF reports.",
+            },
             "report": {
+                "analysis_run_id": report.analysis_run_id,
                 "risk_level": report.risk_level,
                 "summary": report.summary,
                 "recommendation": report.recommendation,
-                "created_time": report.created_time.isoformat() if report.created_time else None,
+                "created_time": utc_iso(report.created_time),
             } if report else None,
+            "analysis": analysis,
         },
     }
 
@@ -192,7 +208,7 @@ def get_doctor_opinion(case_id: int, db: Session = Depends(get_db)):
         "data": {
             "author": opinion.author if opinion else "",
             "content": opinion.content if opinion else "",
-            "updated_time": opinion.updated_time.isoformat() if opinion else None,
+            "updated_time": utc_iso(opinion.updated_time) if opinion else None,
         },
     }
 
@@ -210,7 +226,7 @@ def save_doctor_opinion(case_id: int, payload: DoctorOpinionUpdate, db: Session 
     opinion.content = payload.content.strip()
     db.commit()
     db.refresh(opinion)
-    return {"code": 200, "data": {"updated_time": opinion.updated_time.isoformat()}}
+    return {"code": 200, "data": {"updated_time": utc_iso(opinion.updated_time)}}
 
 
 @router.get("/{case_id}/survival")
@@ -218,24 +234,4 @@ def get_survival_prediction(case_id: int, db: Session = Depends(get_db)):
     case = db.query(Case).filter(Case.id == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="case not found")
-    patient = db.query(Patient).filter(Patient.id == case.patient_id).first()
-    mri = db.query(MRI).filter(MRI.case_id == case_id).order_by(MRI.id.desc()).first()
-    if not mri:
-        raise HTTPException(status_code=404, detail="MRI not found")
-    source = mri_service.resolve_filepath(mri)
-    if not source:
-        raise HTTPException(status_code=404, detail="MRI file is missing")
-    try:
-        radiomics = extract_radiomics(source)
-    except Exception as error:
-        raise HTTPException(status_code=422, detail=f"radiomics failed: {error}")
-    survival = predict_survival(radiomics, patient.age if patient else None)
-    return {
-        "code": 200,
-        "data": {
-            "patient_name": patient.name if patient else "",
-            "age": patient.age if patient else None,
-            "radiomics": radiomics,
-            "survival": survival,
-        },
-    }
+    raise HTTPException(503, "No validated survival model is available")

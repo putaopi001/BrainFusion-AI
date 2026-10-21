@@ -1,27 +1,19 @@
-import os
-from pathlib import Path
-
-# 必须在导入 app 之前设置，切换到独立测试库，避免污染开发库
-TEST_DB = Path(__file__).resolve().parents[1] / "test_brainfusion.db"
-if TEST_DB.exists():
-    TEST_DB.unlink()
-os.environ["DATABASE_URL"] = "sqlite:///./test_brainfusion.db"
-
-import pytest
 from fastapi.testclient import TestClient
-
-from app.database import engine
 from app.main import app
 
 
 client = TestClient(app)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def cleanup_test_db():
-    yield
-    engine.dispose()
-    TEST_DB.unlink(missing_ok=True)
+def test_public_viewing_patient_can_preserve_unknown_clinical_age():
+    response = client.post('/patients/', json={
+        'name': 'public-viewing-only', 'age': None, 'gender': 'unknown'})
+    assert response.status_code == 200
+    patient = response.json()['data']
+    assert patient['age'] is None
+    assert patient['gender'] == 'unknown'
+    saved = client.get('/patients/').json()['data']
+    assert next(row for row in saved if row['id'] == patient['id'])['age'] is None
 
 
 def test_root():
@@ -53,6 +45,18 @@ def test_get_cases():
     resp = client.get("/cases/")
     assert resp.status_code == 200
     assert resp.json()["code"] == 200
+
+
+def test_doctor_opinion_round_trip_and_survival_unavailable():
+    patient_id = client.post('/patients/', json={'name': 'Opinion test', 'age': 50, 'gender': 'male'}).json()['data']['id']
+    created = client.post('/cases/create', json={'patient_id': patient_id, 'description': 'Opinion validation'})
+    assert created.status_code == 200, created.text
+    case_id = created.json()['data']['case_id']
+    response = client.put(f'/cases/{case_id}/doctor-opinion', json={'author': 'Reviewer', 'content': 'Reviewed engineering sample'})
+    assert response.status_code == 200
+    opinion = client.get(f'/cases/{case_id}/doctor-opinion').json()['data']
+    assert opinion['author'] == 'Reviewer' and opinion['content'] == 'Reviewed engineering sample'
+    assert client.get(f'/cases/{case_id}/survival').status_code == 503
 
 
 def test_mri_not_found_unified_error():

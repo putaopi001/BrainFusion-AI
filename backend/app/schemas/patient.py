@@ -3,7 +3,7 @@ from pydantic import BaseModel, ConfigDict
 
 class PatientCreate(BaseModel):
     name: str
-    age: int
+    age: int | None = None
     gender: str
 
 
@@ -12,5 +12,5 @@ class PatientResponse(BaseModel):
 
     id: int
     name: str
-    age: int
+    age: int | None
     gender: str

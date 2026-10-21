@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,23 +18,21 @@ def serialize_prediction(p: Prediction) -> dict:
         "risk_level": p.risk_level,
         "model_version": p.model_version,
         "created_time": p.created_time.isoformat() if p.created_time else None,
+        "source": "legacy_unverified",
+        "current": False,
+        "disclaimer": "Historical unvalidated output; not a current model prediction or clinical assessment.",
     }
 
 
 @router.get("/prediction/{case_id}")
 def get_prediction(case_id: int, db: Session = Depends(get_db)):
-    result = (
-        db.query(Prediction)
-        .filter(Prediction.case_id == case_id)
-        .order_by(Prediction.id.desc())
-        .first()
-    )
-    if result is None:
-        return {"code": 404, "message": "no prediction", "data": None}
-    return {"code": 200, "data": serialize_prediction(result)}
+    raise HTTPException(503, "No validated tumor probability or clinical risk model is available. "
+                        "IDH research results are available separately under /research.")
 
 
 @router.get("/debug/predictions")
 def debug_predictions(db: Session = Depends(get_db)):
     items = db.query(Prediction).all()
-    return {"code": 200, "data": [serialize_prediction(item) for item in items]}
+    return {"code": 200, "available": False, "source": "legacy_unverified",
+            "message": "Archive only; these records are excluded from current results and reports.",
+            "data": [serialize_prediction(item) for item in items]}

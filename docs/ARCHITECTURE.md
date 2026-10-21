@@ -1,96 +1,50 @@
-# BrainFusion AI v0.1 工程化收口 — 评估与实施记录
+# BrainFusion-AI 架构说明
 
-## 一、当前项目完整评估（收口前）
+更新：2026-10-21。本文描述 E 盘候选源码 `E:\BrainFusion-AI` 与隔离候选 `BF-RC-20261021.1`。这是教学科研工程原型，不是临床诊断或临床阅片系统。
 
-| 维度 | 收口前状态 | 收口后状态 |
-|------|-----------|-----------|
-| 后端分层 | api 层混杂业务/文件/AI 逻辑 | api → service → model 分层，core 统一配置/日志/异常 |
-| 返回格式 | 部分 `{code,data}`，部分返回 ORM 对象/裸 dict | 统一 `{code,message,data}` + 统一异常处理 |
-| 异常处理 | 无统一处理，错误格式不一致 | 统一 404/422/500 信封，兼容前端 detail |
-| 日志 | 无结构化日志 | core/logging.py 统一日志 |
-| 数据库时间戳 | 部分实体缺失 created/updated | 全实体补齐 created_time/updated_time + 迁移 |
-| AI 模块 | 硬编码、无接口约束 | ai/interfaces.py 统一 Predictor/Segmenter 接口 + 注册表 |
-| 状态管理 | 无（仅遗留 counter 示例） | Pinia：case/mri/ai/report 四个 store |
-| 前端布局 | 简单横向菜单 | Header + Sidebar + Main 医疗风布局 |
-| 部署 | 无 | Dockerfile + docker-compose + requirements-core |
-| 测试 | 无 | pytest 接口测试（5 用例通过） |
-| 文档 | 无 | README + 本文档 |
+## 组件与边界
 
-## 二、技术债务列表
-
-1. `reports.py` 硬编码 `case_1` 路径，未走 DB/service（遗留接口）。
-2. `preprocess` 与 `predict` 未打通：预处理结果 `processed_path` 未接入分析流程。
-3. `predict_service.py`、`mri_viewer_service.py` 为死代码（已删除）。
-4. `requirements.txt` 为完整 pip freeze，含 torch/nnunetv2/monai 等重型依赖，与 Web 服务耦合（已拆分 requirements-core.txt）。
-5. 前端大 chunk（1.1MB），需路由级 `import()` 代码分割。
-6. AI 结果仍为基线/占位数据，未接真实模型。
-7. 分割掩膜为模拟椭球，非真实 MedNeXt/nnUNet 输出。
-8. 体素间距未参与测距换算（当前 spacing=1.0）。
-9. 无登录/权限体系。
-10. SQLite 单文件，多并发/生产需升级 PostgreSQL。
-
-## 三、必须修改的问题（本次已处理）
-
-- [x] 统一返回格式与异常处理（main.py 统一 exception handler）。
-- [x] api 层去业务化：标注/影像逻辑下沉 service。
-- [x] 删除重复/死代码：predict_service、mri_viewer_service。
-- [x] 补齐实体时间戳并增加字段说明。
-- [x] AI 模块统一接口（ai/interfaces.py）与注册表。
-- [x] 修复 patients/predictions 返回裸 ORM / model_name 字段 bug。
-- [x] 引入 Pinia 状态管理并接入 CaseDetail。
-- [x] 前端医疗风 Layout（Sidebar + Header + Main）。
-- [x] Docker 部署与 requirements-core 拆分。
-- [x] pytest 接口测试。
-- [x] README 与架构文档。
-
-## 四、推荐修改顺序（后续）
-
-1. 打通 preprocess → predict 流程（用 processed_path 作为分析输入）。
-2. 接入真实分割模型，替换 mock 掩膜。
-3. 报告导出 PDF。
-4. 前端路由级代码分割。
-5. 登录/权限 + PostgreSQL 迁移。
-
-## 五、本次涉及文件
-
-后端：
-- app/main.py（统一异常/日志/迁移）
-- app/core/{config,logging,exceptions,response}.py
-- app/database.py（使用 settings）
-- app/models/*.py（时间戳 + 字段说明 + processed_path）
-- app/schemas/{case,patient,annotation}.py
-- app/api/{patients,debug,predictions,preprocess}.py（统一信封 + 修复）
-- app/ai/interfaces.py（新增）
-- app/ai/{imaging/mri_model,tabular/tab_model,fusion/fusion_model}.py（实现接口）
-- tests/test_api.py（新增）
-- requirements-core.txt、Dockerfile（新增）
-
-前端：
-- src/main.js（注册 Pinia）
-- src/api/axios.js（VITE_API_BASE + 超时）
-- src/App.vue（Sidebar + Header + Main 布局）
-- src/views/Home.vue（Dashboard）
-- src/views/Patients.vue（响应结构修复）
-- src/views/CaseDetail.vue（接入 store）
-- src/stores/{case,mri,ai,report}.js（新增）
-- Dockerfile、nginx.conf（新增）
-
-根目录：
-- README.md、docs/ARCHITECTURE.md、docker-compose.yml
-
-## 六、测试方案
-
-- 后端：`pytest tests -v`（root / debug / 病例创建 / 病例列表 / 统一 404 错误，5 用例通过）。
-- 前端：`npm run build`（编译通过）。
-- 手工回归：上传 MRI → 预览 → 阅片（三视图/窗宽窗位/标注）→ AI 分析 → 报告 → 医生确认。
-
-## 七、AI 可插拔接口
-
-```text
-ai/interfaces.py
-  BasePredictor (abstract predict)   → MRIModel / TabularModel / FusionModel
-  BaseSegmenter  (abstract segment)  → 预留 MedNeXt / nnUNet
-  PREDICTOR_REGISTRY / SEGMENTER_REGISTRY（@register_predictor / @register_segmenter）
+```mermaid
+flowchart LR
+  U[浏览器] --> F[Vue 3 + Vite 前端]
+  F -->|HTTP JSON| A[FastAPI API]
+  F -->|NIfTI 体数据及切片| A
+  A --> DB[(SQLite / SQLAlchemy)]
+  A --> R[隔离 runtime：上传、任务、掩膜、报告]
+  A --> M[MONAI BraTS SegResNet]
+  P[Orthanc PACS] -->|DICOMweb QIDO-RS / WADO-RS| A
+  A -->|经授权的影像帧| F
+  F --> C[Cornerstone3D DICOM / NIfTI 视图]
 ```
 
-未来接入真实模型：实现 BasePredictor/BaseSegmenter 并注册，替换 ai_service 中的实例化即可。
+- **前端**：Vue 3、Vue Router、Element Plus、Axios。病例、工作站、分析、研究和报告页面通过 API 读写业务状态；NIfTI 工作站提供序列切换、三正交视图和分割显示。Cornerstone3D 是阅片渲染层，不负责病例授权或影像来源判定。
+- **后端**：FastAPI、SQLAlchemy。`backend/app/main.py` 注册病例、MRI、分析、报告、PACS、研究和本地身份 API。启动时会在 `DATABASE_URL` 指定的数据库建表并执行守卫式补列；因此只能对隔离数据库启动候选服务，正式数据库迁移须单独审批。
+- **PACS**：Orthanc 是独立归档服务；DICOMweb 是客户端访问 Study、Series、Instance 元数据与影像帧的 HTTP 接口。BrainFusion 的 PACS API 做连接状态、来源核对、导入/转换审核和受控代理。Orthanc 不等于阅片器，Cornerstone 不等于 PACS。当前 RC 指向不可用的隔离测试端点，导入、像素读取和 AI bridge 都关闭。
+- **数据存储**：RC 使用独立 SQLite `E:\BrainFusion-Runtime\release-candidate\brainfusion-rc-20261021\runtime\brainfusion.db`；上传、任务和分析工件也在 RC runtime。正式服务原挂载的 runtime 在 `E:\BrainFusion-Runtime\results\nightly\2026-10-20\20261020T1815_real_nifti_compose_demo_fixed\runtime`，与 RC 分开，且本轮未启动或写入。
+- **Docker**：RC Compose 文件为 `E:\BrainFusion-AI\docker-compose.rc.yml`，绑定 `127.0.0.1:18104`（API）和 `127.0.0.1:18184`（web）。RC 的模型只读挂载自 `E:\BrainFusion-Runtime\results\nightly\2026-10-10\20261010T000643_ec1cf8da\relocated-runtime\model`。独立 Stage 7 Orthanc 使用 `127.0.0.1:18142` 及命名卷 `brainfusion-stage7-orthanc-data`；不连接正式 Orthanc 卷。
+
+## MRI 输入与模型路径
+
+认可的分割输入是同一受试者、四个已识别序列（T1c、T1n、T2w、FLAIR），并满足项目的空间契约。DICOM 来源需先确认来源、身份、序列角色及隐私范围；各序列可以转换为 NIfTI，再检查方向、affine、spacing、origin、覆盖与 frame of reference。移动序列需按审核过的变换对齐到参考空间，并以 MRI 强度影像插值规则重采样。未经验证的序列不能仅因文件齐全而送入模型。
+
+UPENN-GBM-00001 的四组 NIfTI 曾各自转换。其源 Study/FrameOfReference 不一致；工程配准候选以 T1c 为参考并保留变换、质量检查材料，但需要人工隐私、序列和配准审核。它没有导入 Orthanc，也没有用于 SegResNet 推理。
+
+模型为集成的预训练 MONAI BraTS SegResNet。RC 已在隔离 Docker 后端中使用现有合格的 WAW-GliomAI 四序列工程样本完成一次真实推理；模型权重 SHA-256 为 `860ccb3f1c21c99d0410ad8a1ac4ef6b8fab60cec0a503b0ba42675741a750ae`。本项目自行实现输入检查、任务编排、推理调用、掩膜和区域体积持久化、病例/报告关联及前端显示；并未在此版本训练该模型。模型输出是工程分割结果，仍需有资质的读者复核，不能推断临床诊断、预后或模型泛化能力。
+
+## 病例到报告的数据流
+
+1. 用户创建病例并上传经许可的 NIfTI；病例、患者和 MRI 记录进入 SQLite，影像文件写到该环境的 `UPLOAD_DIR`。
+2. 分析 API 为病例创建运行记录，核对四序列和输入路径后调用 SegResNet。
+3. 运行状态、模型修订、输入摘要、掩膜路径和 WT/TC/ET 体积写入分析记录；掩膜作为单独文件保存在隔离 runtime。
+4. 结构化报告绑定同一分析运行 ID。病例详情、分析历史和报告 API 读取这些持久化记录；服务重启后 RC 验证过结果与报告仍可读取。
+5. 病例报告显示模型、区域体积、分析版本、输入/模型/掩膜摘要及“待复核”状态。报告是可追溯工程产物，不是医生签署的临床报告。
+
+## 开源组件与项目代码
+
+- 集成组件：FastAPI、SQLAlchemy、MONAI/PyTorch、NIfTI/DICOM 处理依赖、Vue 3、Vite、Element Plus、Cornerstone3D、Orthanc、Docker Compose。其具体版本以仓库锁文件、requirements 清单及镜像构建记录为准。
+- 项目自有代码：病例和任务 API、权限与 fail-closed 门控、PACS/DICOMweb 代理和来源核对、转换登记与审核、分析编排、结果完整性与报告关联、研究输入登记及前端业务页面。
+- 研究页面中的模型、组学、融合、IDH 或生存分析能力须逐项以功能矩阵中的测试状态为准。存在路由或实验代码不等同于已经完成临床验证。
+
+## 当前运行边界
+
+RC 是本机隔离工程候选。正式 `brainfusion-backend` / `brainfusion-frontend` 容器保持停止，正式数据库、病例 17/19 和正式 PACS 配置未触碰。RC 的 PACS 导入、像素读取、DICOM阅片和 AI bridge 默认关闭；UPENN 审核通过前继续保持关闭。

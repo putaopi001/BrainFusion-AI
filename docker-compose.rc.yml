@@ -1,0 +1,63 @@
+services:
+  backend:
+    platform: linux/amd64
+    image: brainfusion-rc-backend:rc-20261021-1
+    build:
+      context: ./backend
+      target: full
+      args:
+        INSTALL_PROFILE: "full"
+    container_name: brainfusion-rc-20261021-backend
+    ports:
+      - "127.0.0.1:18104:8000"
+    volumes:
+      - "E:/BrainFusion-Runtime/release-candidate/brainfusion-rc-20261021/runtime:/app/runtime"
+      - "E:/BrainFusion-Runtime/release-candidate/brainfusion-rc-20261021/config:/run-config:ro"
+      - "E:/BrainFusion-Runtime/results/nightly/2026-10-10/20261010T000643_ec1cf8da/relocated-runtime/model:/models:ro"
+      - "E:/BrainFusion-Runtime/release-candidate/brainfusion-rc-20261021/research:/research:ro"
+      - "E:/BrainFusion-Runtime/release-candidate/brainfusion-rc-20261021/dataset:/dataset:ro"
+      - "E:/BrainFusion-Runtime/release-candidate/brainfusion-rc-20261021/pacs-derived:/pacs-derived:ro"
+    environment:
+      DATABASE_URL: sqlite:////app/runtime/brainfusion.db
+      UPLOAD_DIR: /app/runtime/uploads
+      MODEL_DIR: /models
+      RESEARCH_DIR: /research
+      DATASET_DIR: /dataset
+      PACS_DERIVED_DIR: /pacs-derived
+      DICOM_QUARANTINE_DIR: /app/runtime/dicom-quarantine
+      FEATURE_JOBS_DIR: /app/runtime/feature_jobs
+      PACS_CONFIG_FILE: /run-config/pacs-config.json
+      PACS_ALLOW_DOCKER_HOST: "false"
+      LOCAL_AUTH_FILE: /run-config/local-users.json
+      RADIOMICS_COMPATIBILITY: /run-config/radiomics-compatibility.json
+      RADIOMICS_PYTHON: /opt/radiomics/run-python
+      PACS_IMPORT_REGISTRY_FILE: /app/runtime/local/pacs-import-candidates.json
+      PACS_IMPORT_JOBS_DIR: /app/runtime/local/pacs-imports
+      DICOM_CONVERSION_INDEX_FILE: /app/runtime/local/dicom-conversions.json
+      CORS_ORIGINS: "http://127.0.0.1:18184"
+      LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  frontend:
+    platform: linux/amd64
+    image: brainfusion-rc-frontend:rc-20261021-1
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: "http://127.0.0.1:18104"
+    container_name: brainfusion-rc-20261021-frontend
+    ports:
+      - "127.0.0.1:18184:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

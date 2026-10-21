@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -9,7 +10,23 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "BrainFusion-AI"
     VERSION: str = "0.1.0"
     DATABASE_URL: str = "sqlite:///./brainfusion.db"
+    UPLOAD_DIR: str = str(Path(__file__).resolve().parents[2] / 'uploads')
     LOG_LEVEL: str = "INFO"
+    MODEL_DIR: str = "E:/BrainFusion-Runtime/models/monai-brats"
+    GPU_BUDGET_MB: int = 6000
+    RESEARCH_DIR: str = "E:/BrainFusion-Runtime/results/research"
+    DATASET_DIR: str = "E:/BrainFusion-Data/WAW-GliomAI-v3"
+    RADIOMICS_PYTHON: str = "E:/BrainFusion-Runtime/envs/radiomics39/python.exe"
+    RADIOMICS_COMPATIBILITY: str = "E:/BrainFusion-Runtime/results/stage6/compatibility.json"
+    FEATURE_JOBS_DIR: str = "E:/BrainFusion-Runtime/results/feature_jobs"
+    PACS_CONFIG_FILE: str = "E:/BrainFusion-Runtime/local/pacs-config.json"
+    PACS_ALLOW_DOCKER_HOST: bool = False
+    PACS_IMPORT_REGISTRY_FILE: str = "E:/BrainFusion-Runtime/local/pacs-import-candidates.json"
+    PACS_IMPORT_JOBS_DIR: str = "E:/BrainFusion-Runtime/local/pacs-imports"
+    PACS_DERIVED_DIR: str = "E:/BrainFusion-Data/PACS-derived"
+    DICOM_QUARANTINE_DIR: str = "E:/BrainFusion-Runtime/dicom-quarantine"
+    LOCAL_AUTH_FILE: str = "E:/BrainFusion-Runtime/local/local-users.json"
+    DICOM_CONVERSION_INDEX_FILE: str = "E:/BrainFusion-Runtime/local/dicom-conversions.json"
 
     # CORS 允许来源（逗号分隔字符串，部署时通过环境变量覆盖）
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"

@@ -1,0 +1,20 @@
+# Observed Windows main environment subset on 2026-10-10; NOT a hash lock,
+# full dependency closure, supported-Python migration, or verified install recipe.
+# Preserve existing CUDA torch2.11.0+cu128/torchvision0.26.0+cu128 separately.
+# Never install isolated PyRadiomics worker dependencies into this environment.
+fastapi==0.141.1
+uvicorn==0.52.0
+sqlalchemy==2.0.51
+pydantic==2.13.4
+pydantic-settings==2.14.2
+python-multipart==0.0.32
+nibabel==5.4.2
+simpleitk==2.5.6
+numpy==2.2.6
+pillow==12.3.0
+scipy==1.15.3
+monai==1.5.2
+scikit-learn==1.7.2
+joblib==1.6.0
+pytest==9.1.1
+httpx==0.28.1

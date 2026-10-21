@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.mri import MRI
 from app.services.feature_service import save_mri_feature
 from app.services.preprocess_service import preprocess_mri
+from app.core.storage import resolve_stored_path
 
 
 router = APIRouter()
@@ -18,9 +19,7 @@ def preprocess(case_id: int, db: Session = Depends(get_db)):
     if mri is None:
         raise HTTPException(status_code=404, detail="MRI not found")
 
-    source = Path(mri.filepath)
-    if not source.is_absolute():
-        source = Path(__file__).resolve().parents[2] / source
+    source = resolve_stored_path(mri.filepath)
     if not source.is_file():
         raise HTTPException(status_code=404, detail="MRI file is missing")
 

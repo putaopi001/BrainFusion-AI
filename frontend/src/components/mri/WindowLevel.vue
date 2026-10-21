@@ -29,7 +29,7 @@
       <el-button size="small" @click="preset('full')">全窗</el-button>
       <el-button size="small" @click="preset('auto')">自动</el-button>
     </div>
-    <p class="wl-hint">窗宽窗位作用于原始体素强度（真实 HU / 强度值映射）。</p>
+    <p class="wl-hint">窗宽窗位作用于原始体素强度（真实 MRI 强度值映射）。</p>
   </div>
 </template>
 

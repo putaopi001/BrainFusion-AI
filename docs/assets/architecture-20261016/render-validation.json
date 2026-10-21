@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "browser": "155.0.4283.45",
+  "figures": [
+    {
+      "name": "architecture-current",
+      "width": 1800,
+      "height": 1160,
+      "texts": 58,
+      "fontLoaded": true,
+      "overflow": []
+    },
+    {
+      "name": "dicom-data-relations",
+      "width": 1800,
+      "height": 1170,
+      "texts": 46,
+      "fontLoaded": true,
+      "overflow": []
+    }
+  ]
+}

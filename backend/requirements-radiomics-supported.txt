@@ -1,0 +1,16 @@
+# Accepted Windows CPython 3.11.17 CPU worker; never install into main CUDA env.
+# PyRadiomics 3.1.0 has no official cp311 Windows wheel: use our checksum-verified
+# original-source build, NOT a repackaged cp39 wheel or a protocol replacement.
+# Exact Conda builds/PyPI URLs/hashes/local wheel are exported by
+# tools/lock_radiomics_candidate.py. See docs/RADIOMICS_ENVIRONMENT_MIGRATION.md.
+numpy==1.26.4
+SimpleITK==2.5.2
+PyWavelets==1.6.0
+pyradiomics==3.1.0
+pykwalify==1.8.0
+PyYAML==6.0.2
+ruamel.yaml==0.18.6
+ruamel.yaml.clib==0.2.12
+python-dateutil==2.9.0.post0
+six==1.17.0
+docopt==0.6.2

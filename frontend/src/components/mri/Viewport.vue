@@ -1,7 +1,8 @@
 <template>
-  <article class="viewport-panel">
+  <article class="viewport-panel" :data-view="view">
     <header class="panel-header">
       <strong>{{ title }}</strong>
+      <span class="sequence-identity">{{ sequenceLabel }}</span>
       <span class="panel-meta">{{ sliceIndex + 1 }} / {{ maxIndex + 1 }}</span>
     </header>
     <div
@@ -9,10 +10,11 @@
       :style="{ cursor: cursorStyle }"
       @wheel.prevent="onWheel"
       @contextmenu.prevent
+      @dragstart.prevent
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
+      @pointercancel="$emit('pointercancel')"
       @pointerleave="onPointerLeave"
     >
       <div class="stage" :style="stageStyle">
@@ -22,6 +24,7 @@
             :src="imageUrl"
             :alt="title + ' MRI 切片'"
             class="slice-img"
+            :draggable="false"
             @load="onLoad"
             @error="onError"
           />
@@ -30,6 +33,8 @@
             :src="maskUrl"
             alt="分割掩膜"
             class="mask-img"
+            :draggable="false"
+            @error="$emit('maskerror')"
           />
           <AnnotationLayer
             :view="view"
@@ -39,6 +44,7 @@
             :draft="draft"
             :crosshair="crosshair"
             :shape="shape"
+            :spacing="spacing"
           />
         </div>
       </div>
@@ -63,17 +69,19 @@
 <script setup>
 import { computed, ref, watch } from "vue"
 import AnnotationLayer from "./AnnotationLayer.vue"
-import { clamp } from "./utils"
+import { clamp, sliceDims } from "./utils"
 
 const props = defineProps({
   view: { type: String, default: "axial" },
   title: { type: String, default: "" },
+  sequenceLabel: { type: String, default: "序列未标识" },
   imageUrl: { type: String, default: "" },
   maskUrl: { type: String, default: "" },
   showMask: { type: Boolean, default: false },
   width: { type: Number, default: 100 },
   height: { type: Number, default: 100 },
   shape: { type: Array, default: null },
+  spacing: { type: Array, default: null },
   sliceIndex: { type: Number, default: 0 },
   maxIndex: { type: Number, default: 0 },
   annotations: { type: Array, default: () => [] },
@@ -87,7 +95,7 @@ const props = defineProps({
   windowLevel: { type: Number, default: 50 },
 })
 
-const emit = defineEmits(["pointerdown", "pointermove", "pointerup", "pointerleave", "wheel", "loaded"])
+const emit = defineEmits(["pointerdown", "pointermove", "pointerup", "pointercancel", "pointerleave", "wheel", "loaded", "maskerror"])
 
 const boxRef = ref(null)
 const loaded = ref(false)
@@ -104,7 +112,7 @@ const orient = computed(() => ORIENTATION[props.view] || {})
 
 const boxStyle = computed(() => ({
   width: BASE_WIDTH + "px",
-  aspectRatio: (props.width || 1) + " / " + (props.height || 1),
+  aspectRatio: props.shape && props.spacing ? (() => { const d = sliceDims(props.shape, props.view); return (props.width * props.spacing[d.colAxis]) + " / " + (props.height * props.spacing[d.rowAxis]) })() : (props.width || 1) + " / " + (props.height || 1),
 }))
 
 const stageStyle = computed(() => ({
@@ -173,7 +181,7 @@ function onWheel(event) {
 .viewport-panel { min-width: 0; border: 1px solid #334155; background: #020617; border-radius: 6px; overflow: hidden; }
 .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; font-size: 12px; background: #172033; color: #e2e8f0; }
 .panel-meta { color: #94a3b8; font-variant-numeric: tabular-nums; }
-.viewport { position: relative; display: flex; min-height: 300px; overflow: hidden; align-items: center; justify-content: center; background: #020617; }
+.viewport { position: relative; display: flex; min-height: 300px; overflow: hidden; align-items: center; justify-content: center; background: #020617; user-select: none; touch-action: none; }
 .stage { transition: transform 0.06s ease-out; }
 .image-box { position: relative; line-height: 0; transform-origin: center center; }
 .slice-img { display: block; width: 100%; height: 100%; image-rendering: auto; }

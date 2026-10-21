@@ -1,63 +1,16 @@
-# frontend
+# BrainFusion AI 前端
 
-This template should help get you started developing with Vue 3 in Vite.
+当前Vue3/Vite源码，实际页面/范围见项目README和docs/USER_OPERATION_GUIDE、FIXED_DEMO_GUIDE、RELEASE_SCOPE。不是通用模板或容器验收声明。
 
-## Recommended IDE Setup
+本机在E:/BrainFusion-AI/frontend，先设置E盘缓存：
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
+```powershell
+. ../backend/tools/use_e_drive.ps1
 npm run build
-```
-
-### Run End-to-End Tests with [Playwright](https://playwright.dev)
-
-```sh
-# Install browsers for the first run
-npx playwright install
-
-# When testing on CI, must build the project first
-npm run build
-
-# Runs the end-to-end tests
+$env:BRAINFUSION_WEB_URL='http://127.0.0.1:5179'
 npm run test:e2e
-# Runs the tests only on Chromium
-npm run test:e2e -- --project=chromium
-# Runs the tests of a specific file
-npm run test:e2e -- tests/example.spec.ts
-# Runs the tests in debug mode
-npm run test:e2e -- --debug
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+当前前端由项目start_local.ps1管理，不另起第二服务。基础浏览器测试仅根页面/四序列前置限制，不冒称真实模型全流程。依赖按package-lock.json和实测构建，node_modules不随源码交付；首次安装/浏览器下载也必须先设置E盘npm/Playwright缓存，本轮不重复安装。
 
-```sh
-npm run lint
-```
+构建大块提示保留。Docker/Compose仍未实测，新.dockerignore不是构建通过证据。源包不含数据/模型/主CUDA/独立CPU环境，不能把只有页面源码称为开箱部署完成。

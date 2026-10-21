@@ -1,4 +1,6 @@
 import io
+import json
+from functools import lru_cache
 from pathlib import Path
 
 import nibabel as nib
@@ -7,12 +9,11 @@ import SimpleITK as sitk
 from PIL import Image
 
 from app.models.mri import MRI
+from app.core.storage import resolve_stored_path
 
 
-# 视图 -> 体数据轴向。与 mri_preview_service.generate_mri_previews 保持完全一致：
-#   axial   = axis 0
-#   coronal = axis 1
-#   sagittal= axis 2
+# Display volume axes: [S, P, L], normalized from the NIfTI affine.
+# Axial rows increase P; coronal/sagittal rows are flipped to put S on top.
 VIEW_AXIS = {"axial": 0, "coronal": 1, "sagittal": 2}
 
 
@@ -20,30 +21,67 @@ def resolve_filepath(mri: MRI) -> Path | None:
     """Resolve an MRI record's filepath to an absolute path on disk."""
     if not mri or not mri.filepath:
         return None
-    path = Path(mri.filepath)
-    if not path.is_absolute():
-        backend_dir = Path(__file__).resolve().parents[2]
-        path = backend_dir / path
+    path = resolve_stored_path(mri.filepath)
     return path if path.is_file() else None
 
 
+def resolve_view_sequence(mri, sequence=None):
+    """Use the uploaded common grid only. No registration/resampling is implicit."""
+    if not mri.sequences_json:
+        if sequence is not None:
+            raise ValueError('This legacy MRI has no identified four-sequence study')
+        return resolve_filepath(mri), None, []
+    from app.services.study_validation import validate_sequences
+    paths = json.loads(mri.sequences_json)
+    if not isinstance(paths, dict) or set(paths) != {'t1c', 't1n', 't2w', 't2f'}:
+        raise ValueError('Exactly four identified MRI sequences are required for switching')
+    resolved = {}
+    for key, value in paths.items():
+        path = resolve_stored_path(value)
+        resolved[key] = path
+    # Header checks also reject externally changed geometry, rather than misalign masks/annotations.
+    validate_sequences(resolved)
+    selected = sequence or 't2f'
+    if selected not in resolved:
+        raise ValueError('Unknown MRI sequence')
+    return resolved[selected], selected, ['t1c', 't1n', 't2w', 't2f']
+
+
 def load_volume(filepath: Path) -> tuple[np.ndarray, list[float], str]:
-    """Load a 3D MRI volume to a float32 numpy array (nii/nii.gz via nibabel, dcm via SimpleITK)."""
-    name = filepath.name.lower()
-    if name.endswith((".nii", ".nii.gz")):
-        image = nib.load(str(filepath))
-        data = np.squeeze(np.asanyarray(image.dataobj)).astype(np.float32)
-        spacing = [float(value) for value in image.header.get_zooms()[:3]]
-    else:
-        sitk_image = sitk.ReadImage(str(filepath))
-        data = np.squeeze(sitk.GetArrayFromImage(sitk_image)).astype(np.float32)
-        spacing = [float(value) for value in sitk_image.GetSpacing()]
-    if data.ndim != 3:
+    path = Path(filepath).resolve()
+    return _load_display(str(path), path.stat().st_mtime_ns, path.stat().st_size)
+
+
+@lru_cache(maxsize=2)
+def _load_display(path, modified, size):
+    if not path.lower().endswith((".nii", ".nii.gz")):
+        raise ValueError("Only 3D NIfTI volumes are supported by this viewer")
+    image = nib.load(path)
+    if len(image.shape) != 3:
         raise ValueError("MRI volume must be 3-dimensional")
+    target = nib.orientations.axcodes2ornt(("L", "P", "S"))
+    transform = nib.orientations.ornt_transform(nib.orientations.io_orientation(image.affine), target)
+    lps_image = image.as_reoriented(transform)
+    matrix = lps_image.affine[:3, :3]
+    directions = matrix / np.linalg.norm(matrix, axis=0)
+    if not np.allclose(np.abs(directions), np.eye(3), atol=1e-3):
+        raise ValueError("Oblique MRI requires resampling before orthogonal viewing")
+    data = lps_image.get_fdata(dtype=np.float32).transpose(2, 1, 0).copy()
+    if not np.isfinite(data).all():
+        raise ValueError("MRI contains nonfinite values")
+    data.setflags(write=False)
+    spacing = list(map(float, lps_image.header.get_zooms()[:3][::-1]))
     return data, spacing, str(data.dtype)
 
 
 def get_volume_metadata(filepath: Path) -> dict:
+    path = Path(filepath).resolve()
+    stat = path.stat()
+    return _metadata_cached(str(path), stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=16)
+def _metadata_cached(filepath, modified, size):
     """Return {shape, spacing, min, max, mean, std, dtype, display_min, display_max}."""
     data, spacing, dtype = load_volume(filepath)
     flat = data.ravel()
@@ -51,6 +89,8 @@ def get_volume_metadata(filepath: Path) -> dict:
         "shape": list(data.shape),
         "spacing": spacing,
         "dtype": dtype,
+        "coordinate_contract": "LPS_DISPLAY_V1",
+        "display_axes": ["S", "P", "L"],
         "min": float(flat.min()),
         "max": float(flat.max()),
         "mean": float(flat.mean()),
@@ -65,8 +105,8 @@ def extract_slice(data: np.ndarray, view: str, index: int) -> np.ndarray:
     if axis == 0:
         return data[index, :, :]
     if axis == 1:
-        return data[:, index, :]
-    return data[:, :, index]
+        return data[::-1, index, :]
+    return data[::-1, :, index]
 
 
 def apply_window_level(slice_data: np.ndarray, ww: float, wl: float) -> np.ndarray:
@@ -91,57 +131,37 @@ def render_slice_png(filepath: Path, view: str, index: int, ww: float, wl: float
     return buffer.getvalue()
 
 
-def _mock_tumor_mask(data: np.ndarray) -> np.ndarray:
-    """Deterministic mock tumor mask (ellipsoid around the brightest region).
-
-    This is a teaching/demo placeholder only — no real segmentation model is run.
-    """
-    shape = np.array(data.shape, dtype=np.float32)
-    mean = float(data.mean())
-    std = float(data.std()) + 1e-6
-    bright = data > (mean + 1.4 * std)
-    if bright.any():
-        center = np.argwhere(bright).mean(axis=0)
-    else:
-        center = shape / 2.0
-
-    radii = np.maximum(shape * 0.14, 2.0)
-    grid = np.indices(data.shape).astype(np.float32)
-    normalized = sum(((grid[axis] - center[axis]) / radii[axis]) ** 2 for axis in range(3))
-    return (normalized <= 1.0).astype(np.uint8)
-
-
 def ensure_segmentation_mask(mri: MRI, source: Path) -> Path:
-    """Return the path to the cached mock segmentation mask, generating it once if needed."""
-    mask_path = source.parent / "seg_mask.nii.gz"
-    if mask_path.is_file():
-        return mask_path
-
-    data, _, _ = load_volume(source)
-    mask = _mock_tumor_mask(data)
-
-    # Reuse the original NIfTI affine so the mask aligns voxel-for-voxel with the MRI.
-    reference = nib.load(str(source))
-    mask_image = nib.Nifti1Image(mask, affine=reference.affine, header=reference.header)
-    mask_image.set_data_dtype(np.uint8)
-    nib.save(mask_image, str(mask_path))
+    """Only expose an explicit uploaded/reference/model mask, never fabricate one."""
+    path = getattr(mri, "segmentation_path", None)
+    if not path:
+        raise FileNotFoundError("No segmentation available; run a real model or upload a mask")
+    mask_path = Path(path)
+    mask_stat, source_stat = mask_path.stat(), Path(source).stat()
+    _validate_mask_cached(str(mask_path.resolve()), mask_stat.st_mtime_ns, mask_stat.st_size,
+                          str(Path(source).resolve()), source_stat.st_mtime_ns, source_stat.st_size)
     return mask_path
+
+
+@lru_cache(maxsize=8)
+def _validate_mask_cached(mask, mask_modified, mask_size, source, source_modified, source_size):
+    from app.services.segmentation_metrics import validate_mask
+    validate_mask(nib.load(mask), nib.load(source))
 
 
 def render_mask_png(mask_path: Path, view: str, index: int) -> bytes:
     """Render a semi-transparent red overlay PNG for the segmentation mask slice."""
-    mask = np.squeeze(np.asanyarray(nib.load(str(mask_path)).dataobj))
+    mask = load_volume(mask_path)[0]
     axis = VIEW_AXIS[view]
     size = mask.shape[axis]
     index = max(0, min(int(index), size - 1))
-    slice_mask = extract_slice(mask.astype(np.float32), view, index) > 0
+    slice_mask = extract_slice(mask, view, index)
 
     height, width = slice_mask.shape
     rgba = np.zeros((height, width, 4), dtype=np.uint8)
-    rgba[..., 0] = 255          # red
-    rgba[..., 1] = 20
-    rgba[..., 2] = 20
-    rgba[..., 3] = np.where(slice_mask, 160, 0).astype(np.uint8)
+    for label, color in {1: (59, 130, 246, 160), 2: (245, 158, 11, 140),
+                         3: (239, 68, 68, 180), 4: (168, 85, 247, 140)}.items():
+        rgba[slice_mask == label] = color
 
     buffer = io.BytesIO()
     Image.fromarray(rgba, mode="RGBA").save(buffer, format="PNG")
@@ -157,6 +177,8 @@ def voxel_coord_for_point(view: str, index: int, nx: float, ny: float, shape: tu
     coord[axis] = index
     coord[col_axis] = int(round(nx * (shape[col_axis] - 1)))
     coord[row_axis] = int(round(ny * (shape[row_axis] - 1)))
+    if view != "axial":
+        coord[row_axis] = shape[row_axis] - 1 - coord[row_axis]
     return {"x": coord[0], "y": coord[1], "z": coord[2]}
 
 
@@ -171,7 +193,7 @@ def get_voxel_value(filepath: Path, view: str, index: int, nx: float, ny: float)
     row = max(0, min(int(round(ny * (rows - 1))), rows - 1))
     value = float(slice_2d[row, col])
     voxel = voxel_coord_for_point(view, index, nx, ny, data.shape)
-    return {"value": value, "voxel": voxel}
+    return {"value": value, "voxel": voxel, "coordinate_contract": "LPS_DISPLAY_V1", "unit": "MRI intensity"}
 
 
 def compute_display_status(mri: MRI) -> str:

@@ -20,6 +20,7 @@
         <el-menu-item index="/"><span class="menu-dot"></span>工作台</el-menu-item>
         <el-menu-item index="/cases"><span class="menu-dot"></span>病例管理</el-menu-item>
         <el-menu-item index="/patients"><span class="menu-dot"></span>患者管理</el-menu-item>
+        <el-menu-item index="/research"><span class="menu-dot"></span>IDH 与融合研究</el-menu-item>
       </el-menu>
 
       <div class="sidebar-footer">
@@ -54,18 +55,20 @@ const route = useRoute()
 const caseStore = useCaseStore()
 
 const activeMenu = computed(() => {
+  if (route.path.startsWith("/research")) return "/research"
   if (route.path.startsWith("/cases")) return "/cases"
   if (route.path.startsWith("/patients")) return "/patients"
   return "/"
 })
 
 const pageTitle = computed(() => {
+  if (route.path.startsWith("/research")) return "IDH 与融合研究"
   if (route.path.startsWith("/cases")) return "病例管理"
   if (route.path.startsWith("/patients")) return "患者管理"
   if (route.path.startsWith("/case/")) return "病例详情"
   if (route.path.startsWith("/upload-mri")) return "MRI 影像上传"
   if (route.path.startsWith("/analysis")) return "AI 智能分析"
-  if (route.path.startsWith("/report")) return "诊断报告"
+  if (route.path.startsWith("/report")) return route.query.source === 'dicom' ? 'DICOM 阅片记录' : '诊断报告'
   return "工作台"
 })
 </script>

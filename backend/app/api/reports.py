@@ -1,93 +1,20 @@
-from fastapi import APIRouter
-
-from app.services.report_service import generate_report
-
-
-router = APIRouter(
-    prefix="/reports",
-    tags=["reports"]
-)
-
-
-
-# 临时保存报告
-reports_cache={}
-
-
-
-
-@router.post("/generate/{case_id}")
-def create_report(case_id:int):
-
-
-    from app.services.ai_service import AIService
-
-
-
-    # 这里读取一次AI结果
-
-    ai_service=AIService()
-
-
-
-    result = ai_service.predict(
-
-        case_id,
-
-
-        "uploads/case_1/BraTS20_Training_001_flair.nii",
-
-
-        {
-
-        "age":50,
-
-        "gender":"unknown"
-
-        }
-
-    )
-
-
-
-    report = generate_report(result)
-
-
-
-    reports_cache[case_id]=report
-
-
-
-    return {
-
-
-        "message":
-        "report generated",
-
-
-        "data":
-        report
-
-    }
-
-
-
-
+import json
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.mri import MRI
+from app.services.current_report import current_model_report
+router = APIRouter(prefix="/reports", tags=["reports"])
 
 @router.get("/{case_id}")
-def get_report(case_id:int):
+def get_report(case_id: int, db: Session = Depends(get_db)):
+    mri = db.query(MRI).filter(MRI.case_id == case_id).order_by(MRI.id.desc()).first()
+    report = current_model_report(mri, db)
+    if not report:
+        raise HTTPException(404, "No successful report for the current run")
+    return {"code": 200, "data": {"id": report.id, "analysis_run_id": report.analysis_run_id,
+        "summary": json.loads(report.summary), "recommendation": json.loads(report.recommendation)}}
 
-
-    return {
-
-
-        "data":
-        reports_cache.get(
-
-            case_id,
-
-            {}
-
-        )
-
-    }
+@router.post("/generate/{case_id}")
+def create_report(case_id: int, db: Session = Depends(get_db)):
+    return get_report(case_id, db)
