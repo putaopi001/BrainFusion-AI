@@ -55,7 +55,7 @@ def test_oblique_lps_sort_row_column_units_and_no_rewriting():
     ('frame','mixed_frame_of_reference'),('orientation','mixed_series_orientation'),
     ('pixel_spacing','mixed_pixel_spacing'),('layout','mixed_series_pixel_layout'),
     ('same_plane','duplicate_slice_position'),('drift','non_rectilinear_series'),
-    ('gap','non_uniform_slice_spacing'),('declared','declared_slice_spacing_mismatch'),
+    ('gap','non_uniform_slice_spacing'),('declared_mixed','inconsistent_declared_slice_spacing'),
     ('duplicate_uid','duplicate_series_uid'),('missing','series_instance_set_mismatch'),
     ('single','single_plane_volume_unavailable'),('mosaic','unsupported_mosaic'),
     ('multiframe','unsupported_multiframe'),('uid_parent','uid_mismatch'),
@@ -69,7 +69,7 @@ def test_unsupported_series_explicitly_refused(change,reason):
     elif change=='same_plane':data[0]['00200032']=copy.deepcopy(data[1]['00200032'])
     elif change=='drift':data[0]['00200032']['Value'][2]+=1
     elif change=='gap':data[0]['00200032']=tag([16,15.5,30],'DS')
-    elif change=='declared':data[0]['00180088']=tag(9,'DS')
+    elif change=='declared_mixed':data[0]['00180088']=tag(9,'DS')
     elif change=='duplicate_uid':data[0]['00080018']=copy.deepcopy(data[1]['00080018'])
     elif change=='missing':data.pop()
     elif change=='single':data=data[:1];expected=expected[:1]
@@ -78,6 +78,37 @@ def test_unsupported_series_explicitly_refused(change,reason):
     else:data[0]['0020000D']=tag('2.25.999')
     with pytest.raises(HTTPException) as caught:validate(data,expected)
     assert caught.value.detail['reason']==reason
+
+
+@pytest.mark.parametrize(('declared','measured','thickness'),[(1,3,3), (1,.9,.9)])
+def test_regular_slice_centers_override_consistent_declared_spacing_but_preserve_qc(declared,measured,thickness):
+    data=items()
+    for row in data:
+        index=int(row['00080018']['Value'][0].split('.')[-1])-500
+        row['00200032']=tag([10+measured*index*.8,20-measured*index*.6,30],'DS')
+        row['00180088']=tag(declared,'DS')
+        row['00180050']=tag(thickness,'DS')
+    result=validate(data)
+    geometry=result['geometry']; qc=geometry['spacing_qc']
+    assert geometry['spacing_xyz_mm'][2]==pytest.approx(measured)
+    assert qc['geometry_source'].startswith('ImagePositionPatient')
+    assert qc['measured_slice_center_spacing_mm']==pytest.approx(measured)
+    assert qc['declared_spacing_between_slices_mm']==pytest.approx(declared)
+    assert qc['declared_spacing_absolute_difference_mm']==pytest.approx(abs(declared-measured))
+    assert qc['declared_spacing_matches_measured_centers'] is False
+    assert qc['slice_thickness_values_mm']==[thickness]
+    assert qc['declaration_used_for_geometry'] is False
+    assert geometry['measured_slice_gaps_mm']==pytest.approx([measured,measured])
+    assert [row['instance_uid'] for row in result['instances']]==['2.25.500','2.25.501','2.25.502']
+
+
+def test_inconsistent_declared_spacing_is_still_refused():
+    data=items()
+    data[0]['00180088']=tag(1,'DS')
+    with pytest.raises(HTTPException) as caught:
+        validate(data)
+    assert caught.value.status_code==422
+    assert caught.value.detail['reason']=='inconsistent_declared_slice_spacing'
 
 
 def test_masked_out_pixels_and_metadata_revision_stable_under_archive_reordering():

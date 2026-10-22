@@ -1,6 +1,6 @@
 # BrainFusion-AI RC 操作手册
 
-仅针对隔离候选 `BF-RC-20261021.1`。正式容器当前停止；下列命令不得替换 `docker-compose.rc.yml` 为正式 Compose。RC 启动会对其挂载的 RC SQLite 建表/补列，因此启动前确认 Compose 和数据库路径仍指向 `E:\BrainFusion-Runtime\release-candidate\brainfusion-rc-20261021`。
+仅针对隔离候选 `BF-RC-20261021.1`。正式容器当前运行于 18100/18180；下列命令不得替换 `docker-compose.rc.yml` 为正式 Compose。RC 启动会对其挂载的 RC SQLite 建表/补列，因此启动前确认 Compose 和数据库路径仍指向 `E:\BrainFusion-Runtime\release-candidate\brainfusion-rc-20261021`。
 
 ## 路径与服务
 
@@ -16,7 +16,8 @@
 | 本机数据根 | `E:\BrainFusion-Data` | 公开数据集、PACS 候选和派生文件；不是 RC writable runtime |
 | Conda 环境 | `E:\BrainFusion-AI\.conda\brainfusion`；另有 `E:\.conda\envs\brainfusion` | 两个路径均保留；用途不可简单互换 |
 | RC Web / API | `http://127.0.0.1:18184` / `http://127.0.0.1:18104` | 浏览器和后端 |
-| 隔离 Orthanc | `http://127.0.0.1:18142` | Stage 7 空测试归档；独立 volume |
+| 正式 Web / API | `http://127.0.0.1:18180` / `http://127.0.0.1:18100` | 已按独立审批包部署冻结 tag；本次几何修复验收未触碰 |
+| 隔离 Orthanc | `http://127.0.0.1:18142` | Stage7 独立卷；保留合成验收 Study 与获准隔离阅片的 UPENN-GBM-00001 |
 
 ## 启动、停止与健康检查
 
@@ -71,7 +72,7 @@ $s = Invoke-RestMethod http://127.0.0.1:18104/pacs/status
 $s | ConvertTo-Json -Depth 6
 ```
 
-当前 RC 预期 `read_available`、`import_available`、`dicom_view_available`、`pixel_read_enabled` 和 `ai_bridge_available` 都为 `false`；`/pacs/studies` 应拒绝未配置的归档。不得通过改 JSON、环境变量或打开正式服务来消除该结果。Stage 7 Orthanc 未提供凭据时 `/system` 返回 401；认证材料只由授权维护者在本机秘密存储中处理，不能写入仓库或本手册。
+RC/正式 BrainFusion PACS 门控按原配置保持关闭；不得通过改 JSON、环境变量或指向正式服务来打开。独立 Stage7 Orthanc 有独立认证和数据卷，归档中保留合成验收 Study 与 UPENN-GBM-00001；四序列 QIDO/WADO 与隔离 Cornerstone 显示已实测。凭据只在本机秘密管理位置处理，不写入仓库、命令历史或本手册。不要清空该卷或重复导入数据。
 
 ## RC 备份与恢复
 
@@ -96,7 +97,7 @@ s.backup(d); d.close(); s.close()
 & 'E:\.conda\envs\brainfusion\python.exe' -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute('pragma integrity_check').fetchone()[0]); c.close()" 'E:\BrainFusion-Runtime\backups\brainfusion-rc-backup.db'
 ```
 
-恢复仅限 **RC**：先停止隔离 Compose，确认恢复文件和目标仍为 RC 路径，再把备份文件复制到 RC runtime 的 `brainfusion.db`，最后启动 RC 并检查健康、病例和报告。不要照此对正式 runtime 执行恢复；正式库恢复或迁移必须另行审批。源码恢复补丁可在对应 Git HEAD 上应用，恢复快照的 `tracked-changes.patch` 已做只读反向可应用检查；未跟踪文件按 manifest 哈希核对。
+恢复仅限 **RC/本次修复测试 runtime**：先停止相应隔离 Compose，确认恢复文件和目标仍为隔离路径，再恢复数据库并检查健康、病例和报告。不要照此对正式 runtime 执行恢复；正式库恢复或迁移必须新的明确审批。正式部署验收记录在 `E:\BrainFusion-Runtime\backups\production-preflight-20261021T205339\production-deployment-acceptance.json`；备份原件不覆盖。源码恢复补丁可在对应 Git HEAD 上应用，恢复快照的 `tracked-changes.patch` 已做只读反向可应用检查；未跟踪文件按 manifest 哈希核对。
 
 ## 常见问题
 
@@ -105,5 +106,5 @@ s.backup(d); d.close(); s.close()
 - **前端页面 200 但 API 失败**：确认 backend healthy、`CORS_ORIGINS` 与 `18184` 一致。
 - **没有当前分析报告**：检查病例历史与分析状态；不要用随机/模拟输出填补，也不要为了演示直接重复推理。
 - **PACS 连接失败或 401**：RC 当前 fail-closed 是预期状态；认证由本机维护者核对，不要在 Git 或对话中贴凭据。
-- **pytest 提示缺少 `pydicom`**：本轮没有安装依赖。使用项目锁定镜像/环境重新准备目标测试；不要因此改动正式容器或运行时。
+- **本机 pytest 环境**：本轮使用 `E:\BrainFusion-AI\.conda\brainfusion` 和 E 盘 basetemp；定向核心回归结果见 `E:\BrainFusion-Runtime\results\dicom-pacs-acceptance-20261021\evidence\core-pytest-20261022.xml`。如果依赖缺失，停止并报告，不要安装到正式运行时。
 

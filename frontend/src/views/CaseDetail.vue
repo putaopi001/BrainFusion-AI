@@ -255,6 +255,15 @@ type="info"
 
 <el-alert v-if="detail.legacy_outputs?.has_prediction || detail.legacy_outputs?.has_report" class="box" title="此病例的历史占位结果已归档，不作为当前模型结果或报告。请完成四序列真实分析。" type="warning" :closable="false" />
 
+<el-alert
+  class="box survival-status"
+  title="生存分析尚未开放个体预测"
+  description="当前没有经过独立验证的生存模型。现有公开队列仅用于工程测试，且生存时间起点尚未逐例确认；本系统不会显示个体风险等级或预计生存时间。"
+  type="info"
+  :closable="false"
+  show-icon
+/>
+
 
 
 

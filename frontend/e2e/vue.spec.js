@@ -57,6 +57,8 @@ test('resampling is opt-in and preview clearly stays engineering-only', async ({
   })
 
   await page.goto(`/case/${caseId}`)
+  await expect(page.getByText('生存分析尚未开放个体预测')).toBeVisible()
+  await expect(page.getByText(/不会显示个体风险等级或预计生存时间/)).toBeVisible()
   await page.getByRole('button', { name: '创建转换方案' }).click()
   await expect(page.getByRole('dialog', { name: '创建四序列转换方案' })).toBeVisible()
   const resamplingToggle = page.getByLabel('显式重采样到T1增强1毫米网格')

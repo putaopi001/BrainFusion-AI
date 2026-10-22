@@ -2,6 +2,7 @@
 import hashlib
 import json
 import math
+import statistics
 from datetime import datetime, timezone
 from time import perf_counter
 from app.services.pacs_client import fail, metadata_uid, validate_uid
@@ -93,19 +94,39 @@ def validate_series(config, raw, study, series, expected_uids):
     gaps=[r['projection_mm']-l['projection_mm'] for l,r in zip(rows,rows[1:])]
     if any(gap<=POSITION_TOL_MM for gap in gaps):
         fail('duplicate_slice_position','重复或过近层位，可能含多时相/回波，未自动分组。',422)
-    spacing_z=gaps[0]
+    spacing_z=statistics.median(gaps)
     if any(not close(gap,spacing_z) for gap in gaps):
         fail('non_uniform_slice_spacing','层间距不均匀或可能缺层，未插值补层。',422)
+    declared_values=[]
+    thickness_values=[]
     for row in rows:
         declared=numbers(row['metadata'],'00180088','DS',optional=True)
-        if declared is not None and not close(abs(declared[0]),spacing_z):
-            fail('declared_slice_spacing_mismatch','SpacingBetweenSlices与实测层间距不一致。',422)
+        if declared is not None:
+            declared_values.append(abs(declared[0]))
+        thickness=numbers(row['metadata'],'00180050','DS',optional=True)
+        if thickness is not None:
+            thickness_values.append(abs(thickness[0]))
+    if declared_values and any(not close(value,declared_values[0]) for value in declared_values):
+        fail('inconsistent_declared_slice_spacing','序列内SpacingBetweenSlices声明值不一致。',422)
+    declared_spacing=declared_values[0] if declared_values else None
+    spacing_qc={'geometry_source':'ImagePositionPatient projected on the ImageOrientationPatient normal',
+                'measured_slice_center_spacing_mm':spacing_z,
+                'measured_slice_center_gap_min_mm':min(gaps),
+                'measured_slice_center_gap_max_mm':max(gaps),
+                'declared_spacing_between_slices_mm':declared_spacing,
+                'declared_spacing_absolute_difference_mm':(
+                    abs(declared_spacing-spacing_z) if declared_spacing is not None else None),
+                'declared_spacing_matches_measured_centers':(
+                    close(declared_spacing,spacing_z) if declared_spacing is not None else None),
+                'slice_thickness_values_mm':sorted(set(thickness_values)),
+                'declaration_used_for_geometry':False}
     # pixel(row,column) = IPP + column*a*columnSpacing + row*b*rowSpacing.
     geometry={'coordinate_system':'DICOM_LPS_mm',
               'dimensions':[int(first['00280011']['Value'][0]),int(first['00280010']['Value'][0]),len(rows)],
               'pixel_spacing_row_column_mm':spacing,'spacing_xyz_mm':[spacing[1],spacing[0],spacing_z],
               'origin_lps_mm':origin,'image_orientation_patient':orientation,
               'unit_normal_for_sorting':normal,'measured_slice_gaps_mm':gaps,'frame_of_reference_uid':frame,
+              'spacing_qc':spacing_qc,
               'geometry_corrected':False,'registration_or_resampling':False}
     geometry['validation_tolerances']={'orientation_component':ORIENTATION_TOL,
         'in_plane_drift_mm':POSITION_TOL_MM,'spacing_absolute_mm':SPACING_ABS_TOL_MM,
