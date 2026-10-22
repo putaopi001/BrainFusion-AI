@@ -133,6 +133,55 @@ def test_kaplan_meier_keeps_survival_at_one_before_first_event():
     assert km['points'][0]['ci95_lower'] == km['points'][0]['ci95_upper'] == 1
 
 
+def test_survival_api_exposes_blocked_status_and_validated_synthetic_km_cox():
+    contract = {
+        'endpoint': 'OS', 'patient_id': 'pid', 'duration': 'days', 'event': 'status',
+        'time_origin': 'origin', 'expected_time_origin': 'diagnosis', 'time_unit': 'days',
+        'event_value': 'event', 'censored_value': 'censored', 'research_use_authorized': True,
+    }
+    rows = [
+        {'pid': f'SYNTHETIC-{index}', 'days': index + 1,
+         'status': 'event' if index < 6 else 'censored', 'origin': 'diagnosis'}
+        for index in range(8)
+    ]
+    with TestClient(app) as client:
+        status = client.get('/research/survival/status')
+        assert status.status_code == 200
+        assert status.json()['data']['research_status'] == 'BLOCKED_BY_DATA'
+        assert status.json()['data']['individual_predictions_available'] is False
+        assert status.json()['data']['api_scope'] == 'synthetic_engineering_only'
+
+        denied = client.post('/research/survival/kaplan-meier', json={
+            'dataset_scope': 'synthetic_engineering',
+            'contract': {**contract, 'research_use_authorized': False}, 'rows': rows,
+        })
+        assert denied.status_code == 409
+        assert 'research_use_not_authorized' in denied.json()['detail']['validation']['issues']
+
+        non_synthetic = client.post('/research/survival/kaplan-meier', json={
+            'dataset_scope': 'synthetic_engineering', 'contract': contract,
+            'rows': [{**rows[0], 'pid': 'unapproved-record'}, *rows[1:]],
+        })
+        assert non_synthetic.status_code == 403
+
+        km = client.post('/research/survival/kaplan-meier', json={
+            'dataset_scope': 'synthetic_engineering', 'contract': contract, 'rows': rows,
+        })
+        assert km.status_code == 200
+        assert km.json()['data']['sample_count'] == 8
+        assert km.json()['data']['event_count'] == 6
+        assert km.json()['data']['scope'] == 'research summary; not an individual prediction'
+
+        cox = client.post('/research/survival/cox', json={
+            'dataset_scope': 'synthetic_engineering', 'contract': contract, 'rows': rows,
+            'features': [[float(i), float((i * i) % 7)] for i in range(8)],
+            'feature_names': ['synthetic_a', 'synthetic_b'], 'l2': 0.1,
+        })
+        assert cox.status_code == 200
+        assert set(cox.json()['data']['coefficients']) == {'synthetic_a', 'synthetic_b'}
+        assert cox.json()['data']['individual_predictions_available'] is False
+
+
 def test_cox_ph_and_c_index_use_only_authorized_synthetic_rows():
     rng = np.random.default_rng(731)
     count = 160

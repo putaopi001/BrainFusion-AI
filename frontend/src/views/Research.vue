@@ -3,6 +3,17 @@
     <h1>IDH 与融合研究</h1>
     <p>研究终点：IDH1/2 原始值 = 1；0/1 的生物学编码尚待核实。研究概率不用于通用风险、肿瘤检测或治疗建议。</p>
     <el-alert title="研究原型：分类模型在参考掩膜特征上拟合；自动掩膜输入仅作工程迁移验证，尚无独立临床评价。" type="warning" :closable="false" />
+    <el-card class="panel survival-panel">
+      <template #header>生存分析软件状态</template>
+      <el-tag type="warning">{{ survivalStatus?.research_status || '读取状态中' }}</el-tag>
+      <p>{{ survivalStatus?.reason || '正在读取生存数据条件。' }}</p>
+      <p>KM 与 Cox API 当前仅接收标记为 SYNTHETIC 的工程测试行；未接入或拟合 WAW 患者级生存记录。</p>
+      <el-table v-if="survivalStatus" :data="survivalRows" border>
+        <el-table-column prop="name" label="分析能力" />
+        <el-table-column prop="status" label="软件状态" />
+      </el-table>
+      <el-alert title="当前没有具备共同时间零点和研究用途确认的生存队列；本页不会加载或拟合患者生存记录，也不提供个体生存期。" type="warning" :closable="false" />
+    </el-card>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="panel" />
     <template v-if="summary">
       <el-card class="panel">
@@ -83,6 +94,7 @@ import request from '../api/axios'
 import { useRoute } from 'vue-router'
 const route = useRoute()
 const summary = ref(null), patient = ref(null), clinical = ref(null), error = ref(''), selected = ref('13')
+const survivalStatus = ref(null)
 const age = ref(50), female = ref(false), patientLoading = ref(false), clinicalLoading = ref(false)
 const cases = ref([]), featureCase = ref(null), featureJob = ref(null), featureSubmitting = ref(false), featureExporting = ref(false)
 const caseClinical = ref(null), caseAge = ref(null), caseFemale = ref(null), clinicalSaving = ref(false)
@@ -101,6 +113,10 @@ const radiomicsRows = computed(() => Object.entries(featureJob.value?.result?.se
     reason: value == null ? '空掩膜区域' : '' }
 }))
 const federatedRows = computed(() => Object.entries(summary.value?.federated.methods || {}).map(([key, value]) => ({ name: key, auc: value.test.auc.toFixed(4), sizes: value.client_sizes?.join(' / ') || '集中式', weights: value.round_trace?.at(-1).weights.map(x => x.toFixed(3)).join(' / ') || '—' })))
+const survivalRows = computed(() => Object.entries(survivalStatus.value?.software || {}).map(([key, status]) => ({
+  name: ({ endpoint_validation: '终点契约校验', kaplan_meier: 'Kaplan–Meier', cox_ph: 'Cox PH', random_survival_forest: 'Random Survival Forest' })[key] || key,
+  status: status === 'available' ? '可用' : status === 'not_available' ? '未安装/不可用' : '需通过数据契约'
+})))
 const failure = e => { error.value = String(e.response?.data?.detail || e.message) }
 async function loadPatient() {
   patientLoading.value = true; patient.value = null; error.value = ''
@@ -186,6 +202,7 @@ async function exportFeatures() {
   finally { featureExporting.value = false }
 }
 onMounted(async () => {
+  request.get('/research/survival/status').then(response => { survivalStatus.value = response.data.data }).catch(failure)
   try {
     summary.value = (await request.get('/research/summary')).data.data
     await loadPatient()

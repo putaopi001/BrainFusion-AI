@@ -108,6 +108,46 @@ def test_current_feature_state_recovers_protocol_from_original_request(tmp_path,
     assert current['result']['protocol']['radiomics_settings']['binWidth'] == .02
 
 
+def test_current_feature_result_uses_verified_sql_record(monkeypatch):
+    analysis_id, job_id = 'analysis-sql', 'job-sql'
+    mri = SimpleNamespace(id=22, case_id=7, analysis_run_id=analysis_id)
+    data = {'case_id': 7, 'mri_id': 22, 'analysis_run_id': analysis_id, 'job_id': job_id,
+            'research_run_id': 'research-sql', 'feature_source': 'automatic model mask',
+            'contract_sha256': 'contract-sql', 'protocol': {'id': 'sql-protocol'},
+            'versions': {'pyradiomics': '3.1.0'}, 'input_sha256': {'t1c': 'input-sql'},
+            'mask_sha256': 'mask-sql', 'region_voxel_counts': {'1': 4},
+            'features': {'1:original_firstorder_Mean': 0.75}, 'extraction_seconds': 2.0}
+    record = SimpleNamespace(id=9, mri_id=22,
+                             feature_type=f'research_radiomics:{analysis_id}:{job_id}',
+                             feature_data=json.dumps(data))
+    state = {'id': job_id, 'state': 'succeeded', 'research_run_id': 'research-sql',
+             'clinical_input': {'age': 50, 'female': True}, 'clinical_input_version': 'v1',
+             'result': {'feature_record_id': 9, 'contract_sha256': 'contract-sql',
+                        'selected_features': {'1:original_firstorder_Mean': 0.5}}}
+    monkeypatch.setattr(feature_jobs, 'latest_mri', lambda *args: mri)
+    monkeypatch.setattr(feature_jobs, 'states', lambda *args: [(None, state)])
+    monkeypatch.setattr(feature_jobs.case_research_input, 'current', lambda *args: {
+        'available': True, 'age': 50, 'female': True, 'version': 'v1', 'source': 'case_research_override'})
+    monkeypatch.setattr(feature_jobs.case_research_input, 'matches', lambda *args: True)
+    monkeypatch.setattr(feature_jobs, 'current_bundle', lambda: ({'run_id': 'research-sql'}, {}))
+    monkeypatch.setattr(feature_jobs, 'analysis_problem', lambda *args: None)
+    monkeypatch.setattr(feature_jobs, 'feature_input_problem', lambda *args: None)
+
+    class FakeDatabase:
+        @staticmethod
+        def get(model, record_id):
+            if model is AnalysisRun:
+                assert record_id == analysis_id
+                return SimpleNamespace(state='succeeded')
+            assert model is MRIFeature and record_id == 9
+            return record
+
+    current = feature_jobs.current(7, FakeDatabase())
+    assert current['stale'] is False
+    assert current['result']['selected_features'] == data['features']
+    assert current['result']['protocol'] == data['protocol']
+
+
 def test_feature_persistence_uses_existing_table_and_is_idempotent():
     with TestClient(app) as client:
         case_id = client.post('/cases/create', json={'patient_name': 'SYNTHETIC radiomics persistence', 'age': 50,

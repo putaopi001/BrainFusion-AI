@@ -53,6 +53,43 @@ def states(case_id, analysis_id):
     return sorted(result, key=lambda item: item[1]['updated_utc'], reverse=True)
 
 
+def persisted_feature_result(db, case_id, mri, state):
+    """Resolve a job-linked SQL feature record as the API source of truth."""
+    result = state.get('result')
+    record_id = result.get('feature_record_id') if isinstance(result, dict) else None
+    if record_id is None:
+        # Preserve read access to historical file-backed jobs that predate SQL indexing.
+        return state
+    record = db.get(MRIFeature, record_id)
+    if record is None or record.mri_id != mri.id:
+        return {**state, 'result': None, 'stale': True,
+                'stale_reason': 'The linked SQL feature record is unavailable for this MRI.'}
+    try:
+        data = json.loads(record.feature_data)
+        expected_type = f'research_radiomics:{mri.analysis_run_id}:{state["id"]}'
+        if (record.feature_type != expected_type or data.get('case_id') != case_id
+                or data.get('mri_id') != mri.id
+                or data.get('analysis_run_id') != mri.analysis_run_id
+                or data.get('job_id') != state['id']
+                or data.get('research_run_id') != state.get('research_run_id')
+                or data.get('contract_sha256') != result.get('contract_sha256')
+                or not isinstance(data.get('features'), dict)):
+            raise ValueError('SQL feature lineage mismatch')
+    except (ValueError, TypeError, KeyError):
+        return {**state, 'result': None, 'stale': True,
+                'stale_reason': 'The linked SQL feature record failed lineage validation.'}
+    resolved = {**result,
+                'selected_features': data['features'],
+                'protocol': data.get('protocol'),
+                'versions': data.get('versions'),
+                'input_sha256': data.get('input_sha256'),
+                'mask_sha256': data.get('mask_sha256'),
+                'region_voxel_counts': data.get('region_voxel_counts'),
+                'extraction_seconds': data.get('extraction_seconds'),
+                'feature_record_id': record.id}
+    return {**state, 'result': resolved}
+
+
 def current(case_id, db):
     mri = latest_mri(db, case_id)
     items = states(case_id, mri.analysis_run_id) if mri.analysis_run_id else []
@@ -85,7 +122,8 @@ def current(case_id, db):
         problem = analysis_problem(mri, run) or feature_input_problem(mri, state['result'])
         if problem:
             return {**state, 'result': None, 'stale': True, 'stale_reason': problem}
-    return {**state, 'stale': False}
+    state = persisted_feature_result(db, case_id, mri, state)
+    return {**state, 'stale': state.get('stale', False)}
 
 
 def compatibility(summary, bundle):

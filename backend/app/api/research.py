@@ -3,12 +3,15 @@ from fastapi.responses import Response
 import csv
 import io
 import json
+from typing import Any, Literal
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from app.services import research_service
 from app.database import get_db
 from app.services import feature_jobs
 from app.services import case_research_input
+from app.research.survival import (EndpointContract, cox_ph, kaplan_meier,
+                                   public_validation, validate_endpoint)
 
 router = APIRouter(prefix='/research', tags=['research'])
 
@@ -37,6 +40,94 @@ def development_prediction(source_patient_id: str):
 class ClinicalInput(BaseModel):
     age: int = Field(ge=0, le=120)
     female: bool
+
+
+class SurvivalContractInput(BaseModel):
+    endpoint: Literal['OS', 'PFS']
+    patient_id: str = Field(min_length=1)
+    duration: str = Field(min_length=1)
+    event: str = Field(min_length=1)
+    time_origin: str = Field(min_length=1)
+    expected_time_origin: str = Field(min_length=1)
+    time_unit: Literal['days', 'months', 'years']
+    event_value: str
+    censored_value: str
+    research_use_authorized: bool = False
+
+    def to_contract(self):
+        return EndpointContract(
+            endpoint=self.endpoint, patient_id=self.patient_id, duration=self.duration,
+            event=self.event, time_origin=self.time_origin,
+            expected_time_origin=self.expected_time_origin, time_unit=self.time_unit,
+            event_value=self.event_value, censored_value=self.censored_value,
+            research_use_authorized=self.research_use_authorized,
+        )
+
+
+class SurvivalRowsInput(BaseModel):
+    dataset_scope: Literal['synthetic_engineering']
+    contract: SurvivalContractInput
+    rows: list[dict[str, Any]]
+
+
+class CoxInput(SurvivalRowsInput):
+    features: list[list[float]]
+    feature_names: list[str]
+    l2: float = Field(default=0.1, gt=0, le=1000)
+
+
+def survival_validation(payload):
+    if any(not str(row.get(payload.contract.patient_id, '')).startswith('SYNTHETIC-')
+           for row in payload.rows):
+        raise HTTPException(403, 'Survival software API currently accepts synthetic engineering rows only.')
+    audit = validate_endpoint(payload.rows, payload.contract.to_contract())
+    return audit, public_validation(audit)
+
+
+@router.get('/survival/status')
+def survival_status():
+    return {
+        'code': 200,
+        'data': {
+            'research_status': 'BLOCKED_BY_DATA',
+            'reason': 'Current survival records do not have a verified common time origin and research-use authorization.',
+            'software': {
+                'endpoint_validation': 'available',
+                'kaplan_meier': 'synthetic_engineering_only',
+                'cox_ph': 'synthetic_engineering_only',
+                'random_survival_forest': 'not_available',
+            },
+            'individual_predictions_available': False,
+            'api_scope': 'synthetic_engineering_only',
+            'scope': 'status only; no patient rows are loaded or modeled',
+        },
+    }
+
+
+@router.post('/survival/validate')
+def validate_survival(payload: SurvivalRowsInput):
+    _, result = survival_validation(payload)
+    return {'code': 200, 'data': result}
+
+
+@router.post('/survival/kaplan-meier')
+def survival_kaplan_meier(payload: SurvivalRowsInput):
+    audit, result = survival_validation(payload)
+    if not audit['eligible']:
+        raise HTTPException(409, {'validation': result})
+    return {'code': 200, 'data': kaplan_meier(audit)}
+
+
+@router.post('/survival/cox')
+def survival_cox(payload: CoxInput):
+    audit, result = survival_validation(payload)
+    if not audit['eligible']:
+        raise HTTPException(409, {'validation': result})
+    try:
+        result = cox_ph(audit, payload.features, payload.feature_names, payload.l2)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {'code': 200, 'data': result}
 
 
 @router.post('/clinical')
