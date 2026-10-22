@@ -48,8 +48,10 @@ def test_metrics_physical_volume_and_empty_regions(tmp_path):
     both_empty = evaluate(empty, empty)['regions']['WT']
     assert both_empty['empty_rule'] == 'both_empty'
     assert both_empty['precision'] is None and both_empty['recall'] is None
+    assert both_empty['hd95_status'] == 'not_available' and 'both regions' in both_empty['hd95_reason'].lower()
     false_positive = evaluate(path, empty)['regions']['WT']
     assert false_positive['hd95_mm'] is None and false_positive['precision'] == 0 and false_positive['recall'] is None
+    assert false_positive['hd95_status'] == 'not_available' and 'One region' in false_positive['hd95_reason']
     false_negative = evaluate(empty, path)['regions']['WT']
     assert false_negative['precision'] is None and false_negative['recall'] == 0
     rgba = np.asarray(Image.open(io.BytesIO(render_mask_png(path, 'axial', 1))))
@@ -57,6 +59,18 @@ def test_metrics_physical_volume_and_empty_regions(tmp_path):
     assert rgba[1, 1, 3] > 0
 
 
+def test_hd95_uses_full_affine_physical_distance(tmp_path):
+    affine = np.eye(4)
+    affine[:3, :3] = [[0, -2, 0], [3, 0, 0], [0, 0, 4]]
+    predicted = np.zeros((5, 5, 5), np.uint8)
+    reference = np.zeros_like(predicted)
+    predicted[1, 1, 1] = reference[1, 1, 1] = 3
+    reference[2, 1, 1] = 3
+    first, second = tmp_path / 'pred.nii.gz', tmp_path / 'ref.nii.gz'
+    nib.save(nib.Nifti1Image(predicted, affine), first)
+    nib.save(nib.Nifti1Image(reference, affine), second)
+    metrics = evaluate(first, second)['regions']['ET']
+    assert metrics['hd95_mm'] == pytest.approx(2.7)
 def test_study_geometry_is_rejected_before_activation(tmp_path):
     good = tmp_path / 'good.nii.gz'
     bad = tmp_path / 'bad.nii.gz'

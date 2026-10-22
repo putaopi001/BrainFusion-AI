@@ -1,5 +1,9 @@
 import csv
+import hashlib
+import json
+from pathlib import Path
 import numpy as np
+import nibabel as nib
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
@@ -10,6 +14,12 @@ from app.research.survival import (EndpointContract, concordance_index, cox_ph, 
                                    public_validation, validate_endpoint)
 from app.services import feature_jobs
 from app.services import research_service
+from app.database import SessionLocal
+from app.models.analysis_run import AnalysisRun
+from app.models.case import Case
+from app.models.mri import MRI
+from app.services.local_auth import require_doctor
+from app.core.config import settings
 
 
 def test_topsis_dominance_and_equal_fallback():
@@ -253,3 +263,151 @@ def test_research_feature_csv_exports_only_current_successful_result(monkeypatch
     monkeypatch.setattr(feature_jobs, 'current', lambda case_id, db: {**state, 'stale': True})
     with TestClient(app) as client:
         assert client.get('/research/cases/9001/features.csv').status_code == 409
+
+
+def _nifti_bytes(data, affine):
+    return nib.Nifti1Image(data, affine).to_bytes()
+
+
+def test_segmentation_evaluation_api_is_authorized_space_checked_and_idempotent(monkeypatch, tmp_path):
+    import uuid
+    from app.research.dataset import sha256
+
+    root = tmp_path / 'uploads'
+    root.mkdir()
+    monkeypatch.setattr(settings, 'UPLOAD_DIR', str(root))
+    case_id, run_id = 9807, uuid.uuid4().hex
+    run_dir = root / f'case_{case_id}' / run_id
+    run_dir.mkdir(parents=True)
+    affine = np.diag([1.5, 1.0, 2.0, 1.0])
+    image_data = np.zeros((5, 5, 5), np.float32)
+    mask_data = np.zeros((5, 5, 5), np.uint8)
+    mask_data[1:3, 1:3, 1:3] = 3
+    paths = {}
+    for sequence in ('t1c', 't1n', 't2w', 't2f'):
+        path = run_dir / f'{sequence}.nii.gz'
+        nib.save(nib.Nifti1Image(image_data, affine), path)
+        paths[sequence] = str(path)
+    mask_path = run_dir / 'prediction.nii.gz'
+    nib.save(nib.Nifti1Image(mask_data, affine), mask_path)
+    hashes = {key: sha256(Path(value)) for key, value in paths.items()}
+    mask_hash = sha256(mask_path)
+    db = SessionLocal()
+    try:
+        case = Case(id=case_id, description='synthetic evaluation fixture', status='analyzed')
+        mri = MRI(id=case_id, case_id=case_id, status='analyzed', input_source='nifti-upload',
+                  sequences_json=json.dumps(paths), analysis_run_id=run_id,
+                  segmentation_path=str(mask_path), segmentation_source='model')
+        run = AnalysisRun(id=run_id, case_id=case_id, mri_id=case_id, state='succeeded',
+                          request_json=json.dumps({'sequences': paths, 'output_dir': str(run_dir)}),
+                          result_json=json.dumps({'model': 'SYNTHETIC-TEST-MODEL', 'mask_path': str(mask_path),
+                                                  'mask_sha256': mask_hash, 'input_sha256': hashes}))
+        db.add_all([case, mri, run])
+        db.commit()
+    finally:
+        db.close()
+
+    app.dependency_overrides[require_doctor] = lambda: {
+        'user': {'role': 'doctor'}, 'role': 'doctor',
+        'authentication_method': 'synthetic-test-session', 'professional_credential_verified': False,
+    }
+    try:
+        reference = mask_data.copy()
+        reference[3, 1, 1] = 3
+        payload = _nifti_bytes(reference, affine)
+        fields = {'dataset_version': 'SYNTHETIC-SEG-EVAL-v1', 'annotation_id': 'SYNTHETIC-LABEL-1',
+                  'authorization_receipt': 'synthetic-only-authorization', 'research_use_authorized': 'true'}
+        with TestClient(app) as client:
+            before = client.get(f'/research/cases/{case_id}/analysis/{run_id}/segmentation-evaluation')
+            assert before.status_code == 200
+            assert before.json()['data']['status'] == 'NOT_AVAILABLE'
+            denied = client.post(f'/research/cases/{case_id}/analysis/{run_id}/segmentation-evaluation',
+                                 data={**fields, 'research_use_authorized': 'false'},
+                                 files={'reference_mask': ('reference.nii', payload, 'application/octet-stream')})
+            assert denied.status_code == 403
+            url = f'/research/cases/{case_id}/analysis/{run_id}/segmentation-evaluation'
+            first = client.post(url, data=fields,
+                                files={'reference_mask': ('reference.nii', payload, 'application/octet-stream')})
+            assert first.status_code == 201, first.text
+            result = first.json()['data']
+            assert result['scope'] == 'synthetic_engineering'
+            assert result['professional_credential_verified'] is False
+            assert result['annotation_ref'] == hashlib.sha256(b'SYNTHETIC-LABEL-1').hexdigest()
+            assert 'annotation_id' not in result and 'authorization_receipt' not in result
+            assert result['units']['hd95'] == 'mm'
+            assert result['regions']['ET']['dice'] < 1
+            assert result['regions']['ET']['hd95_mm'] > 0
+            second = client.post(url, data=fields,
+                                 files={'reference_mask': ('reference.nii', payload, 'application/octet-stream')})
+            assert second.status_code == 201
+            assert second.json()['data']['evaluation_id'] == result['evaluation_id']
+            state = client.get(url)
+            assert state.json()['data']['reference_annotation_available'] is True
+            assert state.json()['data']['record']['reference_mask_sha256'] == hashlib.sha256(payload).hexdigest()
+            evaluation_dir = next((root / 'seg_eval').glob(f'{case_id}-*'))
+            saved_record = next(evaluation_dir.glob('*.json')).read_text(encoding='utf-8')
+            assert 'SYNTHETIC-LABEL-1' not in saved_record and 'synthetic-only-authorization' not in saved_record
+            exported = client.get(url + '.csv')
+            assert exported.status_code == 200 and 'hd95_mm' in exported.text
+            assert len(list(evaluation_dir.glob('*.json'))) == 1
+            shifted_affine = affine.copy(); shifted_affine[0, 3] = 9
+            misaligned = _nifti_bytes(reference, shifted_affine)
+            rejected = client.post(url, data={**fields, 'annotation_id': 'SYNTHETIC-MISALIGNED'},
+                                   files={'reference_mask': ('reference.nii', misaligned, 'application/octet-stream')})
+            assert rejected.status_code == 422 and 'affine' in rejected.text
+            assert len(list(evaluation_dir.glob('*.json'))) == 1
+    finally:
+        app.dependency_overrides.pop(require_doctor, None)
+
+
+def test_segmentation_evaluation_rejects_out_of_runtime_and_misaligned_reference(monkeypatch, tmp_path):
+    import uuid
+    from app.research.dataset import sha256
+
+    root = tmp_path / 'uploads'
+    root.mkdir()
+    monkeypatch.setattr(settings, 'UPLOAD_DIR', str(root))
+    case_id, run_id = 9808, uuid.uuid4().hex
+    run_dir = root / f'case_{case_id}' / run_id
+    run_dir.mkdir(parents=True)
+    affine = np.eye(4)
+    data = np.zeros((4, 4, 4), np.float32)
+    mask = np.zeros_like(data, dtype=np.uint8)
+    paths = {}
+    for sequence in ('t1c', 't1n', 't2w', 't2f'):
+        path = run_dir / f'{sequence}.nii.gz'
+        nib.save(nib.Nifti1Image(data, affine), path)
+        paths[sequence] = str(path)
+    outside = tmp_path / 'outside.nii.gz'
+    nib.save(nib.Nifti1Image(data, affine), outside)
+    mask_path = run_dir / 'mask.nii.gz'
+    nib.save(nib.Nifti1Image(mask, affine), mask_path)
+    hashes = {key: sha256(Path(value)) for key, value in paths.items()}
+    db = SessionLocal()
+    try:
+        db.add_all([
+            Case(id=case_id, description='synthetic path fixture', status='analyzed'),
+            MRI(id=case_id, case_id=case_id, status='analyzed', sequences_json=json.dumps(paths),
+                analysis_run_id=run_id, segmentation_path=str(mask_path), segmentation_source='model'),
+            AnalysisRun(id=run_id, case_id=case_id, mri_id=case_id, state='succeeded',
+                        request_json=json.dumps({'sequences': {**paths, 't1c': str(outside)}, 'output_dir': str(run_dir)}),
+                        result_json=json.dumps({'model': 'SYNTHETIC-TEST-MODEL', 'mask_path': str(mask_path),
+                                                'mask_sha256': sha256(mask_path), 'input_sha256': hashes})),
+        ])
+        db.commit()
+    finally:
+        db.close()
+    app.dependency_overrides[require_doctor] = lambda: {'user': {'role': 'doctor'}, 'role': 'doctor'}
+    try:
+        with TestClient(app) as client:
+            response = client.get(f'/research/cases/{case_id}/analysis/{run_id}/segmentation-evaluation')
+            assert response.status_code == 409
+            assert 'upload runtime' in response.text
+    finally:
+        app.dependency_overrides.pop(require_doctor, None)
+
+
+def test_segmentation_evaluation_requires_local_doctor_session():
+    with TestClient(app) as client:
+        response = client.get('/research/cases/1/analysis/missing/segmentation-evaluation')
+        assert response.status_code == 401

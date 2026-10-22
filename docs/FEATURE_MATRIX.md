@@ -1,10 +1,10 @@
 # BrainFusion-AI 功能矩阵
 
-更新：2026-10-22（最终收尾）。状态含义：**已完成并验收**＝现有冻结/隔离路径有实测证据；**已实现未发布**＝修复版已构建/克隆验收，正式环境仍运行冻结版；**等待人工批准**＝需本人签署模型输入审核或批准正式发布；**BLOCKED_BY_DATA**＝数据口径/许可不足，不能开展研究建模；其他状态保持原定义。
+更新：2026-10-22（研究增强版最终验收）。状态含义：**已完成并验收**＝现有冻结/隔离路径有实测证据；**已实现未发布**＝修复版已构建/克隆验收，正式环境仍运行冻结版；**等待人工批准**＝需本人签署模型输入审核或批准正式发布；**BLOCKED_BY_DATA**＝数据口径/许可不足，不能开展研究建模；其他状态保持原定义。
 
 ## 最终交付分类
 
-- **已完成并通过验收**：隔离 DICOM 导入/QIDO/WADO/Cornerstone 真实像素阅片；合格 WAW 工程样本 SegResNet、掩膜、WT/TC/ET、报告持久化及前端流程；现有冻结版正式服务健康。
+- **已完成并通过验收**：隔离 DICOM 导入/QIDO/WADO/Cornerstone 真实像素阅片；合格 WAW 工程样本 SegResNet、掩膜、WT/TC/ET、报告持久化及前端流程；影像组学 SQL/API/Edge/CSV 集成回放；分割评价 API/UI 的合成工程验收；现有冻结版正式服务健康。
 - **已实现但未发布**：`bf-rc-20261022.1-geometry-fix` 后端与前端镜像。克隆正式库启动及最终只读预检通过，正式替换未执行。
 - **等待人工批准**：唯一正式部署操作仍需明确批准；UPENN 模型输入清单需本人实际审核签署后，才可决定是否批准隔离工程推理。
 - **BLOCKED_BY_DATA**：生存研究/预测因 OS 起点不一致、无可验证共同时间零点及本地数据用途限制而阻断。
@@ -22,13 +22,13 @@
 | 9 | 四序列配准与标准化 | 后端审核/准备流程 | `backend/app/services/dicom_resampling.py`、`backend/app/services/dicom_input_plan.py`、`backend/app/services/study_validation.py` | **已实现未发布 / 等待人工批准**：geometry-fix 版修复了 FLAIR/T2 spacing 误判；UPENN T1c/T2w 三平面叠加、棋盘格、局部视野图已生成；候选网格和变换复算通过 | T2w 目标网格源覆盖 80.79%；红色为源视野外。疑似肿瘤邻近覆盖无法由现有代理证明；输入清单仍未签署，UPENN 推理未执行 |
 | 10 | MONAI SegResNet 分割 | 病例分析入口/API | `backend/app/ai/imaging/monai_segmenter.py`、`backend/app/api/analysis.py` | **隔离真实推理通过**：RC Docker 对已许可 WAW-GliomAI 工程样本执行 MONAI BraTS SegResNet，无 fallback | 单个工程样本不代表临床精度；UPENN 未推理 |
 | 11 | 掩膜可视化 | NIfTI 工作站“显示/隐藏分割” | `frontend/src/components/mri/CornerstoneViewer.vue`、`backend/app/api/mri.py` | **隔离实测**：工作站提供三正交 canvas；真实输出掩膜开关可用 | 结果须人工核对；演示标识不是临床审核签署 |
-| 12 | WT/TC/ET 体积与分割评价 | 病例报告与结果区；工程评价 helper | `backend/app/services/segmentation_metrics.py`、`backend/app/api/analysis.py` | **体积隔离实测**：报告显示 WT 6.284、TC 3.374、ET 0.008 mL；Dice/HD95 已有实现，本轮补充 TP/FP/FN、precision/recall，并在容器内用合成掩膜通过边界 smoke check | 评价仅在提供人工参考掩膜时可用；本轮未计算真实样本准确率或任何临床性能指标 |
+| 12 | WT/TC/ET 体积与分割评价 | 病例报告、`/research/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation` 及 `.csv` | `backend/app/services/segmentation_metrics.py`、`backend/app/services/segmentation_evaluation.py`、`backend/app/api/research.py`、`frontend/src/views/Research.vue` | **合成软件验收 PASS**：受控 NIfTI 上传、登录/授权门控、病例与当前分析来源校验、shape/affine 检查、WT/TC/ET Dice、HD95(mm)、precision/recall、TP/FP/FN、幂等记录及 CSV；定向 pytest 22 passed；隔离 FastAPI→Vue→Edge→CSV 实测无浏览器/请求错误 | 仅合成工程标签，未评价真实患者参考标注，不能作为模型准确率；本地 doctor 会话不验证外部研究授权或专业资质。无标签时为 `NOT_AVAILABLE`；评价证据保存在隔离上传 runtime，不新增数据库 schema |
 | 13 | 分析任务状态与失败处理 | `/analysis`、病例详情分析历史 | `backend/app/services/analysis_jobs.py`、`backend/app/api/analysis.py` | **部分隔离验证**：RC 运行记录 `succeeded` 并可在服务重启后读取；历史 `test_analysis_state.py` 存在 | 重试/崩溃恢复的全路径未在本次 RC 执行；失败任务须检查日志再重试 |
 | 14 | Prediction 与生存研究 | `/analysis`、`/research`、病例详情 | `backend/app/api/predict.py`、`backend/app/api/predictions.py`、`backend/app/api/cases.py`、`backend/app/api/research.py`、`backend/app/research/survival.py` | **研究数据 BLOCKED_BY_DATA；软件 API/UI 已联调**：状态、终点校验、Kaplan–Meier、Cox PH API 均可用；Research 页面从真实 API 显示数据阻断；合成 API 计算与未授权请求拒绝已通过 | 没有患者级拟合；Schoenfeld 趋势仅为未校正筛查，不是正式比例风险检验。RSF 依赖 `sksurv` 当前未安装。数据许可和逐例起点获核验前不提交真实队列，不输出个体预测 |
 | 15 | 影像组学及研究分析 | `/research` | `backend/app/api/research.py`、`backend/app/services/feature_jobs.py`、`backend/tools/extract_selected_radiomics.py`、`frontend/src/views/Research.vue` | **隔离 SQL→FastAPI→Vue→CSV 联调 PASS**：复用一个此前成功工程任务的真实特征结果，在新隔离数据库克隆中持久化并由 SQL 记录校验的 API 返回；Edge 实际显示 20 项特征并下载 CSV，数值与 SQL 逐项匹配；无 schema 变化 | 此次为既有结果的隔离集成回放，没有重新提取。正式环境、正式数据和任务文件未修改；此前模拟 API 浏览器测试证据仍与本次 live 测试分开记录 |
 | 16 | 结构化报告 | `/report?case_id=1` | `backend/app/api/reports.py`、`backend/app/services/current_report.py`、`frontend/src/views/Report.vue` | **隔离实测**：Edge 展示该次分析的模型、体积、限制和来源追溯 | 医生复核显示“待复核”；报告不是临床诊断 |
 | 17 | 结果与报告版本关联 | 报告页及病例分析历史 | `backend/app/models/analysis_run.py`、`backend/app/models/report.py`、`backend/app/services/artifact_integrity.py` | **隔离实测**：analysis run 与 report 同 ID 关联；后端重启后结果/掩膜/报告仍存在 | 当前新 RC 只演示一个分析版本；多版本比较场景未在本次彩排 |
-| 18 | 用户身份、角色与审核权限 | 本地登录/复核界面 | `backend/app/api/local_auth.py`、`backend/app/services/local_auth.py`、`backend/app/core/dependencies.py` | **隔离代码与既有定向测试**：本地身份接口和权限门控存在；本次只通过 PACS/private-runtime 7 项测试 | 当前 RC 账户不可用性/角色全路径未彩排；账户验证不代表执业资质 |
+| 18 | 用户身份、角色与审核权限 | 本地登录/复核界面 | `backend/app/api/local_auth.py`、`backend/app/services/local_auth.py`、`backend/app/core/dependencies.py` | **隔离实测**：合成本地 doctor 会话完成登录、CSRF 保护的评价读取/上传/CSV；未登录与未授权写入有 401/403 定向测试 | 本地账户只作操作归属，不代表执业资质、数据许可或第二审核人；正式账户环境未在本轮操作 |
 | 19 | 前后端部署 | 正式/隔离 Docker Compose | `docker-compose.rc.yml`、正式审批包、`backend/Dockerfile`、`frontend/Dockerfile` | **正式冻结版已完成并验收**：当前正式 18100/18180 healthy；geometry-fix 两镜像在克隆正式库环境 18108/18188 均健康并已停止 | **修复版已实现未发布**：最终预检 GO；只有一次正式前后端替换审批尚待完成；PACS/像素/AI bridge 门控保持关闭 |
 | 20 | 数据备份与恢复 | `E:\BrainFusion-Runtime\backups` | SQLite 官方在线备份；部署验收记录 | **已完成并验收**：geometry-fix 最终预检备份 `geometry-fix-preflight-20261022T20261022T122945` integrity/FK 通过；克隆 schema/状态/记录未变；197/197 运行文件哈希匹配 | 备份为回滚基线，不得覆盖；部署后 DB 恢复须另行批准 |
 | 21 | 日志与错误处理 | Docker logs、PACS 状态与 API 错误 | `backend/app/core/logging.py`、`backend/app/services/worker_error.py` | **部分实测**：容器健康检查与 API fail-closed 状态可读；浏览器彩排无失败请求 | 未对所有故障注入；日志可能含敏感元数据，不应直接外传 |
@@ -42,3 +42,9 @@
 - WAW 工程样本 Edge 彩排：四序列 NIfTI、三画布、真实分析掩膜和报告可见；这与 UPENN DICOM 浏览验收是两条不同数据路径。
 - 本轮核心定向回归 196 passed、4 个既有 deprecation warnings；证据见 `E:\BrainFusion-Runtime\results\dicom-pacs-acceptance-20261021\evidence\core-pytest-20261022.xml`。前端生产构建通过；依赖 externalization/大 chunk 为构建警告。
 - UPENN 浏览证据：`E:\BrainFusion-Runtime\results\dicom-pacs-acceptance-20261021\evidence\upenn-cornerstone-browser-fix.json`。模型输入审核未签字，因此无 UPENN SegResNet 结果。
+
+## 研究增强版分割评价验收
+
+- 评价接口需要本地 doctor 会话、显式研究用途确认和用户上传的 NIfTI 参考标注；服务不接受任意磁盘路径。预测掩膜由已成功且仍关联当前 MRI 的分析任务解析，所有四序列、预测和参考标注必须处于同一 shape/affine 物理空间。
+- 各病例/分析任务的评价记录与上传标注保存在配置的隔离 upload runtime，不修改正式数据库 schema。标注编号和授权凭据正文不持久化，只保存摘要；本地登录只作操作归属，不代表核实外部授权或专业资质。
+- 22 个定向后端测试通过；生产前端构建通过；Microsoft Edge 对隔离 synthetic backend 完成登录、读取分析历史、上传合成标签、显示三分区指标并下载三行 CSV。证据位于 `E:\BrainFusion-Runtime\research-edition\evidence\segmentation-evaluation-live-20261022`。没有计算真实患者 Dice/HD95。

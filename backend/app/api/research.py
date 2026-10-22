@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, File, Form, UploadFile
 from fastapi.responses import Response
 import csv
 import io
@@ -12,6 +12,9 @@ from app.services import feature_jobs
 from app.services import case_research_input
 from app.research.survival import (EndpointContract, cox_ph, kaplan_meier,
                                    public_validation, validate_endpoint)
+from app.services import segmentation_evaluation
+from app.services.local_auth import require_doctor
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix='/research', tags=['research'])
 
@@ -207,3 +210,97 @@ def get_case_clinical_input(case_id: int, db: Session = Depends(get_db)):
 @router.put('/cases/{case_id}/clinical-input')
 def update_case_clinical_input(case_id: int, inputs: ClinicalInput, db: Session = Depends(get_db)):
     return invoke(case_research_input.update, case_id, inputs.age, inputs.female, db)
+
+
+def _evaluation_context(case_id, analysis_run_id, db):
+    try:
+        return segmentation_evaluation.current_run_context(case_id, analysis_run_id, db)
+    except KeyError as error:
+        raise HTTPException(404, str(error)) from None
+    except (OSError, TypeError) as error:
+        raise HTTPException(409, 'Required analysis artifacts are unavailable or invalid') from None
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from None
+
+
+def _public_evaluation(record):
+    if not record:
+        return None
+    return {key: value for key, value in record.items() if key != "authorization_receipt_sha256"}
+
+
+@router.get('/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation')
+def get_segmentation_evaluation(case_id: int, analysis_run_id: str,
+                                identity: dict = Depends(require_doctor), db: Session = Depends(get_db)):
+    context = _evaluation_context(case_id, analysis_run_id, db)
+    record = segmentation_evaluation.load_latest(context)
+    result = context['result']
+    return {'code': 200, 'data': {
+        'status': record.get('status') if record else 'NOT_AVAILABLE',
+        'reference_annotation_available': bool(record),
+        'case_id': case_id,
+        'analysis_run_id': analysis_run_id,
+        'mri_id': context['mri'].id,
+        'model_version': result.get('model'),
+        'input_sha256': context['input_sha256'],
+        'prediction_mask_sha256': context['mask_sha256'],
+        'record': _public_evaluation(record),
+        'note': 'This local review session is not verification of professional credentials or external research authorization.' if not identity.get('professional_credential_verified') else None,
+    }}
+
+
+@router.post('/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation', status_code=201)
+async def create_segmentation_evaluation(
+    case_id: int,
+    analysis_run_id: str,
+    reference_mask: UploadFile = File(...),
+    dataset_version: str = Form(..., min_length=1, max_length=160),
+    annotation_id: str = Form(..., min_length=1, max_length=160),
+    authorization_receipt: str = Form(..., min_length=8, max_length=512),
+    research_use_authorized: bool = Form(False),
+    identity: dict = Depends(require_doctor),
+    db: Session = Depends(get_db),
+):
+    if not research_use_authorized:
+        raise HTTPException(403, 'Explicit research-use authorization is required for reference-label evaluation')
+    context = _evaluation_context(case_id, analysis_run_id, db)
+    try:
+        record = await run_in_threadpool(
+            segmentation_evaluation.evaluate_uploaded_reference,
+            context, reference_mask.file, reference_mask.filename, dataset_version,
+            annotation_id, authorization_receipt, identity,
+        )
+        return {'code': 201, 'data': _public_evaluation(record)}
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    except (OSError, TypeError, KeyError) as error:
+        # Expose only the exception class; filesystem paths and artifact contents stay private.
+        raise HTTPException(409, 'Evaluation artifacts are unavailable or invalid (' + type(error).__name__ + ')') from None
+    finally:
+        await reference_mask.close()
+
+
+@router.get('/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation.csv')
+def export_segmentation_evaluation(case_id: int, analysis_run_id: str,
+                                   identity: dict = Depends(require_doctor), db: Session = Depends(get_db)):
+    context = _evaluation_context(case_id, analysis_run_id, db)
+    record = segmentation_evaluation.load_latest(context)
+    if not record:
+        raise HTTPException(409, 'NOT_AVAILABLE: a reviewed reference annotation is required')
+    output = io.StringIO(newline='')
+    columns = ['case_id', 'mri_id', 'analysis_run_id', 'model_version', 'dataset_version',
+               'annotation_ref', 'protocol', 'evaluation_id', 'mask_label', 'dice', 'hd95_mm',
+               'hd95_status', 'hd95_reason', 'precision', 'recall', 'true_positive_voxels',
+               'false_positive_voxels', 'false_negative_voxels', 'empty_rule']
+    writer = csv.DictWriter(output, fieldnames=columns, lineterminator='\n')
+    writer.writeheader()
+    for label, metrics in record.get('regions', {}).items():
+        writer.writerow({
+            'case_id': record.get('case_id'), 'mri_id': record.get('mri_id'),
+            'analysis_run_id': record.get('analysis_run_id'), 'model_version': record.get('model_version'),
+            'dataset_version': record.get('dataset_version'), 'annotation_ref': record.get('annotation_ref'),
+            'protocol': record.get('protocol'), 'evaluation_id': record.get('evaluation_id'),
+            'mask_label': label, **metrics,
+        })
+    return Response(content=output.getvalue(), media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="segmentation-evaluation-{analysis_run_id}.csv"'})

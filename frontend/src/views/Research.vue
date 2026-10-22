@@ -79,6 +79,58 @@
           </template>
         </template>
       </el-card>
+      <el-card class="panel segmentation-evaluation-panel">
+        <template #header>分割模型评价（需要独立参考标注）</template>
+        <p>仅比较当前分析任务的模型掩膜与已授权参考标签。当前本地账户用于操作归属，不验证专业资质或外部数据授权。没有参考标签时状态为 NOT_AVAILABLE。</p>
+        <div class="evaluation-auth">
+          <p v-if="evaluationUser">本地身份：{{ evaluationUser.display_name }}（{{ evaluationUser.role }}）<el-button :disabled="evaluationAuthBusy" @click="logoutEvaluation">退出</el-button></p>
+          <template v-else>
+            <p v-if="!evaluationAuthConfigured">本机未配置本地复核账户；需由本机维护者按既有账户流程配置。</p>
+            <el-input v-model="evaluationUsername" aria-label="评价本地账户" autocomplete="username" placeholder="本地账户" :disabled="evaluationAuthBusy || !evaluationAuthConfigured" />
+            <el-input v-model="evaluationPassword" aria-label="评价账户密码" type="password" autocomplete="current-password" placeholder="本地账户密码" :disabled="evaluationAuthBusy || !evaluationAuthConfigured" @keyup.enter="loginEvaluation" />
+            <el-button :loading="evaluationAuthBusy" :disabled="!evaluationAuthConfigured || !evaluationUsername || !evaluationPassword" @click="loginEvaluation">登录本地复核账户</el-button>
+          </template>
+          <el-alert v-if="evaluationAuthError" :title="evaluationAuthError" type="error" :closable="false" />
+        </div>
+        <template v-if="evaluationUser?.role === 'doctor'">
+          <el-select v-model="evaluationRunId" aria-label="分割评价分析任务" placeholder="选择当前成功的分析任务" style="width: 520px" @change="refreshEvaluation">
+            <el-option v-for="run in evaluationRuns" :key="run.id" :value="run.id" :label="`${run.id} · ${run.state} · ${run.result?.model || '模型版本未知'}`" />
+          </el-select>
+          <el-button :disabled="!evaluationRunId" :loading="evaluationLoading" @click="refreshEvaluation">刷新评价状态</el-button>
+          <el-tag v-if="evaluation" :type="evaluation.status === 'PASS' ? 'success' : 'info'">{{ evaluation.status }}</el-tag>
+          <el-alert v-if="evaluationError" :title="evaluationError" type="error" :closable="false" />
+          <p v-if="evaluation">病例 {{ evaluation.case_id }} · MRI {{ evaluation.mri_id }} · 分析任务 {{ evaluation.analysis_run_id }} · 模型 {{ evaluation.model_version || '未知' }}</p>
+          <p v-if="evaluation && !evaluation.reference_annotation_available">尚无该任务的参考标注和评价记录。不会显示或推测 Dice/HD95。</p>
+          <template v-if="evaluation?.record">
+            <el-tag type="warning">{{ evaluation.record.scope === 'synthetic_engineering' ? 'SYNTHETIC_TEST' : '参考标注评价（授权声明未核验）' }}</el-tag>
+            <p>数据集版本 {{ evaluation.record.dataset_version }} · 标注引用摘要 {{ evaluation.record.annotation_ref?.slice(0, 12) }} · 协议 {{ evaluation.record.protocol }} · HD95 单位 mm</p>
+            <el-table :data="evaluationRows" border>
+              <el-table-column prop="region" label="区域" width="90" />
+              <el-table-column prop="dice" label="Dice" />
+              <el-table-column prop="hd95" label="HD95 (mm)" />
+              <el-table-column prop="hd95Reason" label="HD95 状态/原因" min-width="190" />
+              <el-table-column prop="precision" label="Precision" />
+              <el-table-column prop="recall" label="Recall" />
+              <el-table-column prop="tp" label="TP (voxels)" />
+              <el-table-column prop="fp" label="FP (voxels)" />
+              <el-table-column prop="fn" label="FN (voxels)" />
+            </el-table>
+            <p>预测掩膜 SHA-256 {{ evaluation.record.prediction_mask_sha256 }} · 参考掩膜 SHA-256 {{ evaluation.record.reference_mask_sha256 }}</p>
+            <el-button :loading="evaluationExporting" @click="exportEvaluation">导出评价 CSV</el-button>
+          </template>
+          <template v-if="evaluationRunId">
+            <el-divider />
+            <p>提交参考标注前，确认数据集许可及标注来源；API 会将标注保存在隔离上传 runtime，并记录版本、标注编号、授权凭据摘要和输入/掩膜哈希。重复提交相同材料是幂等的。</p>
+            <el-input v-model="evaluationDatasetVersion" aria-label="评价数据集版本" placeholder="数据集/版本（合成工程测试请以 SYNTHETIC- 开头）" maxlength="160" />
+            <el-input v-model="evaluationAnnotationId" aria-label="参考标注编号" placeholder="标注引用（原文仅参与哈希，不会保存）" maxlength="160" />
+            <el-input v-model="evaluationAuthorizationReceipt" aria-label="授权凭据引用" placeholder="授权记录引用（仅保存摘要，不保存原文）" maxlength="512" />
+            <input aria-label="参考分割 NIfTI" type="file" accept=".nii,.nii.gz,application/octet-stream" @change="selectReferenceMask" />
+            <el-checkbox v-model="evaluationAuthorized">我确认该参考标注可用于此隔离工程评价，并已核实其来源、范围和许可。</el-checkbox>
+            <el-button type="primary" :disabled="!evaluationReferenceFile || !evaluationDatasetVersion.trim() || !evaluationAnnotationId.trim() || !evaluationAuthorizationReceipt.trim() || !evaluationAuthorized" :loading="evaluationSubmitting" @click="submitEvaluation">提交评价</el-button>
+          </template>
+        </template>
+        <el-alert v-else-if="evaluationUser" title="分割评价写入需要本地 doctor 角色会话；本地角色不代表专业资质核验。" type="warning" :closable="false" />
+      </el-card>
       <el-card class="panel">
         <template #header>同构模拟联邦</template>
         <p>{{ summary.federated.rounds }} 轮，每轮本地 {{ summary.federated.local_steps }} 步；3 客户端；同一逻辑模型。</p>
@@ -99,6 +151,11 @@ const age = ref(50), female = ref(false), patientLoading = ref(false), clinicalL
 const cases = ref([]), featureCase = ref(null), featureJob = ref(null), featureSubmitting = ref(false), featureExporting = ref(false)
 const caseClinical = ref(null), caseAge = ref(null), caseFemale = ref(null), clinicalSaving = ref(false)
 const featureError = ref(''), featureStatusKnown = ref(false)
+const evaluationUser = ref(null), evaluationAuthConfigured = ref(false), evaluationUsername = ref(''), evaluationPassword = ref(''), evaluationCsrf = ref('')
+const evaluationAuthBusy = ref(false), evaluationAuthError = ref(''), evaluationRuns = ref([]), evaluationRunId = ref('')
+const evaluation = ref(null), evaluationError = ref(''), evaluationLoading = ref(false), evaluationSubmitting = ref(false), evaluationExporting = ref(false)
+const evaluationDatasetVersion = ref(''), evaluationAnnotationId = ref(''), evaluationAuthorizationReceipt = ref('')
+const evaluationReferenceFile = ref(null), evaluationAuthorized = ref(false)
 const featureInputDirty = computed(() => Boolean(caseClinical.value && (caseAge.value !== caseClinical.value.age || caseFemale.value !== caseClinical.value.female)))
 let featureTimer = null, mounted = true, featureGeneration = 0
 const featureBusy = computed(() => !featureStatusKnown.value || featureSubmitting.value || ['queued', 'running'].includes(featureJob.value?.state))
@@ -116,6 +173,12 @@ const federatedRows = computed(() => Object.entries(summary.value?.federated.met
 const survivalRows = computed(() => Object.entries(survivalStatus.value?.software || {}).map(([key, status]) => ({
   name: ({ endpoint_validation: '终点契约校验', kaplan_meier: 'Kaplan–Meier', cox_ph: 'Cox PH', random_survival_forest: 'Random Survival Forest' })[key] || key,
   status: status === 'available' ? '可用' : status === 'not_available' ? '未安装/不可用' : '需通过数据契约'
+})))
+const evaluationRows = computed(() => Object.entries(evaluation.value?.record?.regions || {}).map(([region, row]) => ({
+  region, dice: row.dice ?? '不可用', hd95: row.hd95_mm ?? '不可用',
+  hd95Reason: row.hd95_status === 'available' ? '可计算' : row.hd95_reason || 'NOT_AVAILABLE',
+  precision: row.precision ?? '不可用', recall: row.recall ?? '不可用',
+  tp: row.true_positive_voxels, fp: row.false_positive_voxels, fn: row.false_negative_voxels,
 })))
 const failure = e => { error.value = String(e.response?.data?.detail || e.message) }
 async function loadPatient() {
@@ -160,6 +223,7 @@ async function changeFeatureCase() {
     if (!mounted || featureCase.value !== id) return
     caseClinical.value = input; caseAge.value = input.age; caseFemale.value = input.female
     await refreshFeature()
+    await loadEvaluationRuns()
   } catch (e) { if (mounted && featureCase.value === id) failure(e) }
 }
 async function saveCaseClinical() {
@@ -201,8 +265,100 @@ async function exportFeatures() {
   } catch (e) { featureError.value = String(e.response?.data?.detail || e.message) }
   finally { featureExporting.value = false }
 }
+async function loadEvaluationSession() {
+  try {
+    const state = (await request.get('/local-auth/session')).data.data
+    evaluationUser.value = state.user; evaluationAuthConfigured.value = state.configured; evaluationCsrf.value = state.csrf || ''
+    evaluationAuthError.value = ''
+    if (state.user?.role === 'doctor' && featureCase.value) await loadEvaluationRuns()
+  } catch (e) {
+    evaluationUser.value = null; evaluationCsrf.value = ''
+    evaluationAuthError.value = String(e.response?.data?.detail || e.message)
+  }
+}
+async function loginEvaluation() {
+  if (evaluationAuthBusy.value || !evaluationUsername.value || !evaluationPassword.value) return
+  evaluationAuthBusy.value = true; evaluationAuthError.value = ''
+  try {
+    await request.post('/local-auth/login', { username: evaluationUsername.value, password: evaluationPassword.value })
+    await loadEvaluationSession()
+    if (evaluationUser.value?.role !== 'doctor') evaluationAuthError.value = '该账户不是本地 doctor 角色，不能写入评价。'
+  } catch (e) { evaluationAuthError.value = String(e.response?.data?.detail || '本地账户登录失败。') }
+  finally { evaluationPassword.value = ''; evaluationAuthBusy.value = false }
+}
+async function logoutEvaluation() {
+  evaluationAuthBusy.value = true; evaluationAuthError.value = ''
+  try { await request.post('/local-auth/logout', {}, { headers: { 'X-BF-CSRF': evaluationCsrf.value } }) }
+  catch (e) { evaluationAuthError.value = String(e.response?.data?.detail || '本地会话退出失败。') }
+  finally { await loadEvaluationSession(); evaluationAuthBusy.value = false }
+}
+async function loadEvaluationRuns() {
+  if (!featureCase.value || evaluationUser.value?.role !== 'doctor') return
+  evaluationError.value = ''; evaluation.value = null
+  try {
+    const response = await request.get(`/analysis/${featureCase.value}/history`)
+    evaluationRuns.value = (response.data.data || []).filter(run => run.state === 'succeeded' && run.current)
+    if (!evaluationRuns.value.some(run => run.id === evaluationRunId.value)) evaluationRunId.value = evaluationRuns.value[0]?.id || ''
+    if (evaluationRunId.value) await refreshEvaluation()
+  } catch (e) {
+    evaluationRuns.value = []; evaluationRunId.value = ''
+    evaluationError.value = String(e.response?.data?.detail || e.message)
+  }
+}
+async function refreshEvaluation() {
+  if (!featureCase.value || !evaluationRunId.value || evaluationUser.value?.role !== 'doctor') return
+  evaluationLoading.value = true; evaluationError.value = ''
+  try {
+    evaluation.value = (await request.get(`/research/cases/${featureCase.value}/analysis/${evaluationRunId.value}/segmentation-evaluation`, {
+      headers: { 'X-BF-CSRF': evaluationCsrf.value },
+    })).data.data
+  } catch (e) {
+    evaluation.value = null; evaluationError.value = String(e.response?.data?.detail || e.message)
+  } finally { evaluationLoading.value = false }
+}
+function selectReferenceMask(event) {
+  evaluationReferenceFile.value = event.target.files?.[0] || null
+}
+async function submitEvaluation() {
+  if (!evaluationReferenceFile.value || !evaluationRunId.value || !evaluationAuthorized.value) return
+  evaluationSubmitting.value = true; evaluationError.value = ''
+  const form = new FormData()
+  form.append('reference_mask', evaluationReferenceFile.value)
+  form.append('dataset_version', evaluationDatasetVersion.value.trim())
+  form.append('annotation_id', evaluationAnnotationId.value.trim())
+  form.append('authorization_receipt', evaluationAuthorizationReceipt.value.trim())
+  form.append('research_use_authorized', 'true')
+  try {
+    const response = await request.post(`/research/cases/${featureCase.value}/analysis/${evaluationRunId.value}/segmentation-evaluation`, form, {
+      headers: { 'X-BF-CSRF': evaluationCsrf.value }, timeout: 120000,
+    })
+    evaluation.value = {
+      status: response.data.data.status, reference_annotation_available: true,
+      case_id: response.data.data.case_id, analysis_run_id: response.data.data.analysis_run_id,
+      mri_id: response.data.data.mri_id, model_version: response.data.data.model_version,
+      record: response.data.data,
+    }
+    evaluationReferenceFile.value = null; evaluationAuthorized.value = false
+    await refreshEvaluation()
+  } catch (e) { evaluationError.value = String(e.response?.data?.detail || e.message) }
+  finally { evaluationSubmitting.value = false }
+}
+async function exportEvaluation() {
+  if (!featureCase.value || !evaluationRunId.value || !evaluation?.value?.record) return
+  evaluationExporting.value = true; evaluationError.value = ''
+  try {
+    const response = await request.get(`/research/cases/${featureCase.value}/analysis/${evaluationRunId.value}/segmentation-evaluation.csv`, {
+      responseType: 'blob', headers: { 'X-BF-CSRF': evaluationCsrf.value },
+    })
+    const url = URL.createObjectURL(response.data), link = document.createElement('a')
+    link.href = url; link.download = `segmentation-evaluation-${evaluationRunId.value}.csv`
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) { evaluationError.value = String(e.response?.data?.detail || e.message) }
+  finally { evaluationExporting.value = false }
+}
 onMounted(async () => {
   request.get('/research/survival/status').then(response => { survivalStatus.value = response.data.data }).catch(failure)
+  await loadEvaluationSession()
   try {
     summary.value = (await request.get('/research/summary')).data.data
     await loadPatient()
