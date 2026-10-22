@@ -22,7 +22,7 @@
 | 16 | 结构化报告 | `/report?case_id=1` | `backend/app/api/reports.py`、`backend/app/services/current_report.py`、`frontend/src/views/Report.vue` | **隔离实测**：Edge 展示该次分析的模型、体积、限制和来源追溯 | 医生复核显示“待复核”；报告不是临床诊断 |
 | 17 | 结果与报告版本关联 | 报告页及病例分析历史 | `backend/app/models/analysis_run.py`、`backend/app/models/report.py`、`backend/app/services/artifact_integrity.py` | **隔离实测**：analysis run 与 report 同 ID 关联；后端重启后结果/掩膜/报告仍存在 | 当前新 RC 只演示一个分析版本；多版本比较场景未在本次彩排 |
 | 18 | 用户身份、角色与审核权限 | 本地登录/复核界面 | `backend/app/api/local_auth.py`、`backend/app/services/local_auth.py`、`backend/app/core/dependencies.py` | **隔离代码与既有定向测试**：本地身份接口和权限门控存在；本次只通过 PACS/private-runtime 7 项测试 | 当前 RC 账户不可用性/角色全路径未彩排；账户验证不代表执业资质 |
-| 19 | 前后端部署 | 正式/隔离 Docker Compose | `docker-compose.rc.yml`、正式审批包、`backend/Dockerfile`、`frontend/Dockerfile` | **实测**：正式 18100/18180 按审批包部署冻结 tag 且当前 healthy；本轮修复候选独立 18106/18186 healthy | 本轮未替换正式容器；修复候选尚未正式发布 |
+| 19 | 前后端部署 | 正式/隔离 Docker Compose | `docker-compose.rc.yml`、正式审批包、`backend/Dockerfile`、`frontend/Dockerfile` | **实测**：正式 18100/18180 healthy 且 HTTP 正常；新修复候选 18106/18186 healthy 后已停止；原 `brainfusion-rc-20261021` 容器本来 Exited | 本轮未替换正式/RC 容器；修复候选尚未正式晋级 |
 | 20 | 数据备份与恢复 | `E:\BrainFusion-Runtime\backups` | SQLite 官方在线备份；部署验收记录 | **正式部署验收 PASS**：发布前 DB 备份完整；部署后 integrity/外键和预部署逻辑内容/记录数相同，上传文件引用匹配；病例17/19核验通过。证据在 `production-preflight-20261021T205339` | 本轮修复候选仅使用新的空 SQLite；不得覆盖正式备份 |
 | 21 | 日志与错误处理 | Docker logs、PACS 状态与 API 错误 | `backend/app/core/logging.py`、`backend/app/services/worker_error.py` | **部分实测**：容器健康检查与 API fail-closed 状态可读；浏览器彩排无失败请求 | 未对所有故障注入；日志可能含敏感元数据，不应直接外传 |
 | 22 | LLM 报告、RAG、多模态 MRI | 暂无产品入口 | 暂无本 RC 服务实现 | **本轮不实现；仅未来规划** | 后续需独立方案、数据授权、评测和安全边界；不能宣传为当前功能 |
