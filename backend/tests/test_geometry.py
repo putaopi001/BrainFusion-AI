@@ -41,11 +41,17 @@ def test_metrics_physical_volume_and_empty_regions(tmp_path):
     nib.save(nib.Nifti1Image(data, np.diag([-2, -3, 4, 1])), path)
     assert region_volumes(path) == {'WT': .024, 'TC': .024, 'ET': .024}
     result = evaluate(path, path)
-    assert all(r['dice'] == 1 and r['hd95_mm'] == 0 for r in result['regions'].values())
+    assert all(r['dice'] == 1 and r['precision'] == 1 and r['recall'] == 1 and r['hd95_mm'] == 0
+               for r in result['regions'].values())
     empty = tmp_path / 'empty.nii.gz'
     nib.save(nib.Nifti1Image(np.zeros_like(data), np.diag([-2, -3, 4, 1])), empty)
-    assert evaluate(empty, empty)['regions']['WT']['empty_rule'] == 'both_empty'
-    assert evaluate(path, empty)['regions']['WT']['hd95_mm'] is None
+    both_empty = evaluate(empty, empty)['regions']['WT']
+    assert both_empty['empty_rule'] == 'both_empty'
+    assert both_empty['precision'] is None and both_empty['recall'] is None
+    false_positive = evaluate(path, empty)['regions']['WT']
+    assert false_positive['hd95_mm'] is None and false_positive['precision'] == 0 and false_positive['recall'] is None
+    false_negative = evaluate(empty, path)['regions']['WT']
+    assert false_negative['precision'] is None and false_negative['recall'] == 0
     rgba = np.asarray(Image.open(io.BytesIO(render_mask_png(path, 'axial', 1))))
     assert rgba.shape == (4, 3, 4)
     assert rgba[1, 1, 3] > 0

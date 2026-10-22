@@ -61,3 +61,34 @@ Next at the time of the Stage A–E run: obtain authorized human review of the f
 - No files or directories were deleted; no bytes freed. Two model copies have an identical SHA-256 (18,840,620 bytes each), but both paths have configuration/document references, so this is only a future cleanup candidate. Historical nightly, environments, C worktree, images, Orthanc volume, databases and source snapshots remain preserved.
 - Formal BrainFusion containers remain stopped and unchanged; formal database/runtime, PACS, and cases 17/19 were not accessed for writes. No migration, deployment, gate change or UPENN import/inference occurred.
 - Engineering core demo is ready for scope freeze and paper experiment preparation. UPENN human privacy/sequence/registration review and real DICOMweb/Cornerstone pixel validation remain external prerequisites; formal deployment requires a separate approval and rollback plan.
+
+
+## Final closeout — 2026-10-22 (Asia/Shanghai)
+
+- Geometry fix source tag `bf-rc-20261022.1-geometry-fix` and its backend/frontend images are built. The 196-test and UPENN four-sequence Cornerstone results are carried forward from the existing evidence; they were not rerun during final closeout. Final production configuration was read-only checked once: expected images, service names, ports, mount paths, frozen rollback images, security gates and Compose validation all matched.
+- Formal runtime remains on the frozen image IDs, healthy at 18100/18180. The current online SQLite backup and all 197 runtime-file hashes match the production snapshot; case 17/19 links and statuses match. No persisted active jobs, SQLite journal/WAL sidecar or evidence of an unfinished transaction was found. Formal replacement remains the single outstanding release approval and has not been executed.
+- T1c/T2w orthogonal overlay, checkerboard and local review figure were added under the existing UPENN review folder. Red marks outside the original T2w field of view; no lesion/tumor annotation was created. The existing model-input checklist remains unsigned and inference was not performed. Only sequence roles, anatomy/coverage at the human area of interest, intended engineering-use suitability, and explicit isolated-inference authorization require reviewer decisions.
+- Survival prognosis remains `BLOCKED_BY_DATA`: 192 OS rows/86 events have no verifiable common time zero; the local snapshot remains limited to engineering smoke tests. No survival model or heuristic survival months were generated.
+- No application code, formal database, patient record, security gate, frozen tag, source image or DICOM was changed in this closeout.
+
+## Research edition continuation — 2026-10-22
+
+- Work is on `codex/research-edition-20261022`, based on geometry-fix commit `2cfff22dcc3c8e2383f2f4a30e3d8dd2686431b5`; frozen tags remain unchanged. The pre-existing docs modifications and untracked `data/` were preserved.
+- Existing radiomics evidence was reused: six successful versioned feature jobs across five isolated engineering samples, with 20 selected PyRadiomics outputs per job and image/mask fingerprints. No extraction was repeated.
+- Research-page single-feature table and CSV export were added. Export is restricted to the current successful non-stale task and includes analysis/research versions, feature contract, extraction protocol, software versions and input/mask fingerprints. New task results use the existing `mri_features` table; idempotent persistence was tested with a synthetic fixture, not yet against a new real engineering extraction. No schema change was introduced. Browser download has not yet been exercised.
+- Added explicit survival endpoint validation and a Kaplan–Meier estimator with censor times, risk sets, Greenwood log-log intervals and median where reached. The prior targeted suite recorded 27 passed, 4 existing warnings; frontend production build passed with existing dependency/chunk warnings.
+- No patient-level survival rows were read or modeled. WAW OS remains `BLOCKED_BY_DATA`; UPENN inference and formal promotion remain independently approval-gated.
+- The research code is staged but not committed because this repository has no configured Git author identity. No formal container, database, patient record or security gate was modified.
+
+## Research edition continuation — 2026-10-22 16:45 Asia/Shanghai
+
+- Reused a sanitized view of one saved isolated engineering-sample radiomics result. Microsoft Edge rendered its selected-feature table and completed a CSV browser download (1 focused Playwright test passed). The page/API routes were mocked; this was not live backend integration. Chromium was unavailable locally, so the existing Edge installation was used without downloading a browser.
+- Implemented synthetic-only Cox PH fitting using existing SciPy with Breslow ties and ridge regularization, a C-index helper and an explicitly non-formal Schoenfeld-residual trend screen. A deterministic synthetic dataset fit converged (160 rows, 107 events; coefficient 0.619; C-index 0.668). Individual predictions remain disabled. The service no longer computes heuristic survival months and instead returns `BLOCKED_BY_DATA`.
+- The existing Anaconda Python lacks FastAPI, so the updated `test_research.py` could not be collected locally. A direct synthetic Cox execution passed; RSF remains unavailable because `sksurv` is absent. No dependency was installed. No survival patient data was read.
+- Research docs and feature matrix now state the browser-mock and survival-module limits. No formal containers, databases, records, security gates, tags, or source images were changed.
+
+## Research edition continuation — 2026-10-22 17:48 Asia/Shanghai
+
+- Existing segmentation evaluation helper now reports TP/FP/FN counts plus precision and recall for WT/TC/ET, with undefined precision/recall explicitly null for empty denominators. Existing Dice/HD95 and empty-region behavior remain. Synthetic mask smoke check passed in the already available backend image with no network, read-only source mount and temporary `/tmp` only; no reference labels or clinical metrics were used.
+- The follow-up attempt to run pytest in the existing frozen backend image stopped immediately because the image lacks pytest; the host Anaconda lacks FastAPI. No dependency installation and no repeat attempt. Targeted source syntax checks and `git diff --check` passed (Git only reported line-ending normalization warnings).
+- Radiomics live SQL persistence remains blocked until one genuinely new authorized isolated analysis run exists; historical backfill and repeat extraction remain out of scope. UPENN inference, real survival analysis and formal release remain blocked by their independent approvals/data.

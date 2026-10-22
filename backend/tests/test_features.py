@@ -10,6 +10,10 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.linear_model import LogisticRegression
 from app.main import app
+from app.database import SessionLocal
+from app.models.analysis_run import AnalysisRun
+from app.models.feature import MRIFeature
+from app.models.mri import MRI
 from app.research.feature_contract import selected_features, feature_matrix
 from app.services import feature_jobs
 
@@ -79,6 +83,57 @@ def test_current_analysis_hides_old_feature_results(tmp_path, monkeypatch):
     make_state(tmp_path, monkeypatch, 'succeeded')
     monkeypatch.setattr(feature_jobs, 'latest_mri', lambda *args: SimpleNamespace(analysis_run_id='c' * 32))
     assert feature_jobs.current(1, None) is None
+
+
+def test_current_feature_state_recovers_protocol_from_original_request(tmp_path, monkeypatch):
+    state = {'state': 'succeeded', 'research_run_id': 'research',
+             'result': {'selected_features': {'1:original_firstorder_Mean': .5}},
+             'clinical_input': {'age': 50, 'female': True}}
+    (tmp_path / 'request.json').write_text(json.dumps({'protocol': {'id': 'saved-protocol', 'radiomics_settings': {'binWidth': .02}}}))
+    monkeypatch.setattr(feature_jobs, 'latest_mri', lambda *args: SimpleNamespace(analysis_run_id='analysis'))
+    monkeypatch.setattr(feature_jobs, 'states', lambda *args: [(tmp_path, state)])
+    monkeypatch.setattr(feature_jobs.case_research_input, 'current', lambda *args: {'available': True, 'age': 50, 'female': True})
+    monkeypatch.setattr(feature_jobs.case_research_input, 'matches', lambda *args: True)
+    monkeypatch.setattr(feature_jobs, 'current_bundle', lambda: ({'run_id': 'research'}, {}))
+    monkeypatch.setattr(feature_jobs, 'analysis_problem', lambda *args: None)
+    monkeypatch.setattr(feature_jobs, 'feature_input_problem', lambda *args: None)
+
+    class FakeDatabase:
+        @staticmethod
+        def get(*args):
+            return SimpleNamespace(state='succeeded')
+
+    current = feature_jobs.current(1, FakeDatabase())
+    assert current['result']['protocol']['id'] == 'saved-protocol'
+    assert current['result']['protocol']['radiomics_settings']['binWidth'] == .02
+
+
+def test_feature_persistence_uses_existing_table_and_is_idempotent():
+    with TestClient(app) as client:
+        case_id = client.post('/cases/create', json={'patient_name': 'SYNTHETIC radiomics persistence', 'age': 50,
+                              'gender': 'female', 'description': 'Isolated feature persistence fixture'}).json()['data']['case_id']
+    analysis_id, job_id = 'a' * 32, 'b' * 32
+    with SessionLocal() as db:
+        mri = MRI(case_id=case_id, analysis_run_id=analysis_id, segmentation_source='model',
+                  segmentation_path='synthetic-mask.nii.gz', sequences_json='{}')
+        db.add(mri); db.flush()
+        mri_id = mri.id
+        db.add(AnalysisRun(id=analysis_id, case_id=case_id, mri_id=mri_id, state='succeeded', request_json='{}'))
+        db.commit()
+    result = {'research_run_id': 'research-synthetic', 'feature_source': 'automatic model mask',
+              'contract_sha256': 'contract-synthetic', 'protocol': {'id': 'synthetic', 'radiomics_settings': {'binWidth': .02}},
+              'versions': {'pyradiomics': '3.1.0'}, 'input_sha256': {'t1c': 'input-synthetic'},
+              'mask_sha256': 'mask-synthetic', 'region_voxel_counts': {'1': 2},
+              'selected_features': {'1:original_firstorder_Mean': .5}, 'extraction_seconds': 1.0}
+    first = feature_jobs.persist_feature_record(case_id, mri_id, analysis_id, job_id, result)
+    second = feature_jobs.persist_feature_record(case_id, mri_id, analysis_id, job_id, result)
+    assert first == second
+    with SessionLocal() as db:
+        records = db.query(MRIFeature).filter_by(mri_id=mri_id, feature_type=f'research_radiomics:{analysis_id}:{job_id}').all()
+        assert len(records) == 1
+        saved = json.loads(records[0].feature_data)
+        assert saved['analysis_run_id'] == analysis_id and saved['research_run_id'] == 'research-synthetic'
+        assert saved['features']['1:original_firstorder_Mean'] == .5
 
 
 def test_feature_api_input_guards():

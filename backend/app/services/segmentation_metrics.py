@@ -32,7 +32,12 @@ def evaluate(predicted: Path, reference: Path):
     for key, labels in REGIONS.items():
         a, b = np.isin(pd, labels), np.isin(rd, labels)
         na, nb = int(a.sum()), int(b.sum())
-        dice = float(2 * np.count_nonzero(a & b) / (na + nb)) if na + nb else 1.0
+        true_positive = int(np.count_nonzero(a & b))
+        false_positive = na - true_positive
+        false_negative = nb - true_positive
+        dice = float(2 * true_positive / (na + nb)) if na + nb else 1.0
+        precision = float(true_positive / na) if na else None
+        recall = float(true_positive / nb) if nb else None
         hd95 = None
         if na and nb:
             sa = a & ~binary_erosion(a)
@@ -40,7 +45,13 @@ def evaluate(predicted: Path, reference: Path):
             distances = np.concatenate([distance_transform_edt(~sb, sampling=spacing)[sa],
                                          distance_transform_edt(~sa, sampling=spacing)[sb]])
             hd95 = float(np.percentile(distances, 95))
-        result[key] = {"dice": round(dice, 6), "hd95_mm": hd95,
+        result[key] = {"dice": round(dice, 6),
+                       "precision": round(precision, 6) if precision is not None else None,
+                       "recall": round(recall, 6) if recall is not None else None,
+                       "true_positive_voxels": true_positive,
+                       "false_positive_voxels": false_positive,
+                       "false_negative_voxels": false_negative,
+                       "hd95_mm": hd95,
                        "empty_rule": "both_empty" if not na and not nb else "single_empty" if not na or not nb else None}
     return {"regions": result, "volumes_ml": region_volumes(predicted),
             "reference_volumes_ml": region_volumes(reference), "scope": "engineering sample comparison"}

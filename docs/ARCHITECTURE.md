@@ -20,7 +20,7 @@ flowchart LR
 - **前端**：Vue 3、Vue Router、Element Plus、Axios。病例、工作站、分析、研究和报告页面通过 API 读写业务状态；NIfTI 工作站提供序列切换、三正交视图和分割显示。Cornerstone3D 是阅片渲染层，不负责病例授权或影像来源判定。
 - **后端**：FastAPI、SQLAlchemy。`backend/app/main.py` 注册病例、MRI、分析、报告、PACS、研究和本地身份 API。启动时会在 `DATABASE_URL` 指定的数据库建表并执行守卫式补列；因此只能对隔离数据库启动候选服务，正式数据库迁移须单独审批。
 - **PACS**：Orthanc 是独立归档服务；DICOMweb 是客户端访问 Study、Series、Instance 元数据与影像帧的 HTTP 接口。BrainFusion 的 PACS API 做连接状态、来源核对、导入/转换审核和受控代理。Orthanc 不等于阅片器，Cornerstone 不等于 PACS。独立 Stage7 Orthanc 在 18142 保存合成验收 Study 和经人工批准的 UPENN-GBM-00001；隔离前后端对该归档完成了认证 QIDO/WADO 与 Cornerstone 实像素验收。正式 PACS 门控仍按配置关闭。
-- **数据存储**：RC 使用独立 SQLite `E:\BrainFusion-Runtime\release-candidate\brainfusion-rc-20261021\runtime\brainfusion.db`；上传、任务和分析工件也在 RC runtime。正式服务原挂载的 runtime 在 `E:\BrainFusion-Runtime\results\nightly\2026-10-20\20261020T1815_real_nifti_compose_demo_fixed\runtime`，与 RC 分开，且本轮未启动或写入。
+- **数据存储**：RC 使用独立 SQLite `E:\BrainFusion-Runtime\release-candidate\brainfusion-rc-20261021\runtime\brainfusion.db`；上传、任务和分析工件也在 RC runtime。正式服务 runtime 位于 `E:\BrainFusion-Runtime\results\nightly\2026-10-20\20261020T1815_real_nifti_compose_demo_fixed\runtime`，与 RC 分开；冻结版后端/前端目前在 18100/18180 healthy。最终收尾只读核验数据库和文件，没有写入。
 - **Docker**：RC Compose 文件为 `E:\BrainFusion-AI\docker-compose.rc.yml`，绑定 `127.0.0.1:18104`（API）和 `127.0.0.1:18184`（web）。RC 的模型只读挂载自 `E:\BrainFusion-Runtime\results\nightly\2026-10-10\20261010T000643_ec1cf8da\relocated-runtime\model`。独立 Stage 7 Orthanc 使用 `127.0.0.1:18142` 及命名卷 `brainfusion-stage7-orthanc-data`；不连接正式 Orthanc 卷。
 
 ## MRI 输入与模型路径
@@ -48,3 +48,19 @@ UPENN-GBM-00001 的四组 NIfTI 分别转换；源数据来自不同 Study/Frame
 ## 当前运行边界
 
 正式前后端现运行于 18100/18180，按 `production-preflight-20261021T205339` 审批包部署冻结 tag，部署验收为 PASS；本次只读复核仍见服务 healthy。正式数据库和病例 17/19 在本轮没有写入，正式 PACS 导入、像素读取和 AI bridge 门控未更改。Stage7 Orthanc 及独立测试前后端仅服务隔离验收。原冻结 tag 未修改；几何修复分支的候选镜像使用独立容器、端口和新 SQLite。
+
+
+## 最终发布与研究边界（2026-10-22）
+
+- 正式服务仍运行 `bf-rc-20261021.1-frozen` 镜像。`bf-rc-20261022.1-geometry-fix` 的两镜像已在独立克隆正式数据库的测试 Compose 中启动、健康检查通过后停止；其几何修复尚未发布。合成发布配置保留同一正式 runtime/database、只读模型和配置挂载、18100/18180 端口及原有网络。
+- 当前正式 `/pacs/status` 的读取、导入、像素阅片和 AI bridge 能力均关闭/不可用。Stage7 Orthanc 及 UPENN QIDO/WADO/Cornerstone 验收均属于隔离系统，不意味着正式 PACS 连接或临床部署。
+- UPENN T1c/T2w 配准图是工程空间 QC。目标网格 T2w 源视野覆盖约 80.79%；红区不可核验，Otsu 代理不是有效脑/肿瘤分割。模型输入清单未签署，UPENN SegResNet 未执行。
+- 生存预测为 `BLOCKED_BY_DATA`。OS 记录起点字段混合且无逐例时间零点，不能用当前快照训练、拟合生存曲线或产生个体预测。
+- 正式几何修复发布只待一次明确审批；步骤、预检证据和回滚命令已合并在现有 runtime Runbook。
+
+## Research edition additions — 2026-10-22
+
+- `/research/cases/{case_id}/features` runs the existing isolated PyRadiomics worker against the current verified model mask and four same-grid MRI sequences. Versioned task artifacts are stored under the research runtime by case and analysis-run ID; successful new tasks also index their features/provenance in the existing `mri_features` SQL table using a job-specific feature type. This uses the existing schema. Idempotent SQL persistence has only been tested with synthetic fixtures; the prior real engineering extraction artifacts have not been backfilled.
+- The Research page displays selected feature values and exports a CSV only for a current successful, non-stale task. API and production-build checks pass. A Microsoft Edge browser test rendered a saved isolated engineering-sample result and verified the downloaded fixture CSV; its API routes were mocked, so this does not establish live browser-to-backend integration. SQL persistence remains verified only with a synthetic DB fixture; historical results were not backfilled.
+- `backend/app/research/survival.py` supplies strict endpoint validation, Kaplan–Meier, a Breslow-ties ridge Cox PH fitter, a C-index helper and exploratory Schoenfeld-residual trend screening. Synthetic data only was used. The residual screen is not a formal proportional-hazards test, the model does not emit individual predictions, and no authorized import/analysis API exists. Random survival forest remains unavailable because `sksurv` is not installed. The WAW survival snapshot remains excluded because its OS origin is mixed and its use is limited to engineering smoke tests; real survival analysis remains `BLOCKED_BY_DATA`.
+- `backend/app/services/survival_service.py` now returns `BLOCKED_BY_DATA` and does not calculate heuristic risk or survival months.

@@ -56,6 +56,15 @@
             <el-table :data="automaticRows" class="automatic-result" border><el-table-column prop="name" label="方法" /><el-table-column prop="value" label="自动掩膜输入研究概率" /></el-table>
             <p>{{ featureJob.result.disclaimer }}</p>
             <p>选中特征 {{ Object.keys(featureJob.result.selected_features).length }} 个；提取 {{ featureJob.result.extraction_seconds }} 秒；不写入病例诊断报告。</p>
+            <el-button :loading="featureExporting" @click="exportFeatures">导出当前特征 CSV</el-button>
+            <el-table :data="radiomicsRows" class="radiomics-result" border>
+              <el-table-column prop="maskLabel" label="掩膜标签值" width="120" />
+              <el-table-column prop="feature" label="PyRadiomics 特征" min-width="280" />
+              <el-table-column prop="value" label="特征值" min-width="160" />
+              <el-table-column prop="voxelCount" label="区域体素数" width="130" />
+              <el-table-column prop="reason" label="不可计算原因" min-width="160" />
+            </el-table>
+            <p>特征记录 {{ featureJob.result.feature_record_id || '历史文件任务' }}；协议 {{ featureJob.result.protocol?.id || '版本化契约' }}；binWidth {{ featureJob.result.protocol?.radiomics_settings?.binWidth ?? '—' }}；契约摘要 {{ featureJob.result.contract_sha256?.slice(0, 12) || '—' }}</p>
           </template>
         </template>
       </el-card>
@@ -75,7 +84,7 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const summary = ref(null), patient = ref(null), clinical = ref(null), error = ref(''), selected = ref('13')
 const age = ref(50), female = ref(false), patientLoading = ref(false), clinicalLoading = ref(false)
-const cases = ref([]), featureCase = ref(null), featureJob = ref(null), featureSubmitting = ref(false)
+const cases = ref([]), featureCase = ref(null), featureJob = ref(null), featureSubmitting = ref(false), featureExporting = ref(false)
 const caseClinical = ref(null), caseAge = ref(null), caseFemale = ref(null), clinicalSaving = ref(false)
 const featureError = ref(''), featureStatusKnown = ref(false)
 const featureInputDirty = computed(() => Boolean(caseClinical.value && (caseAge.value !== caseClinical.value.age || caseFemale.value !== caseClinical.value.female)))
@@ -85,6 +94,12 @@ const labels = { clinical: '临床年龄/性别', reference_mask_radiomics: '参
 const modelRows = computed(() => Object.entries({ ...summary.value?.branch_models, ...summary.value?.fusion }).map(([key, value]) => ({ name: labels[key] || key, auc: value.test.auc.toFixed(4), accuracy: value.test.balanced_accuracy.toFixed(4), brier: value.test.brier.toFixed(4) })))
 const probabilityRows = computed(() => Object.entries(patient.value?.probabilities || {}).map(([key, value]) => ({ name: labels[key] || key, value: (value * 100).toFixed(1) + '%' })))
 const automaticRows = computed(() => Object.entries(featureJob.value?.result?.probabilities || {}).map(([key, value]) => ({ name: labels[key] || key, value: (value * 100).toFixed(1) + '%' })))
+const radiomicsRows = computed(() => Object.entries(featureJob.value?.result?.selected_features || {}).map(([key, value]) => {
+  const [maskLabel, ...parts] = key.split(':')
+  return { maskLabel, feature: parts.join(':'), value: value == null ? '不可计算' : Number(value).toPrecision(6),
+    voxelCount: featureJob.value?.result?.region_voxel_counts?.[maskLabel] ?? '—',
+    reason: value == null ? '空掩膜区域' : '' }
+}))
 const federatedRows = computed(() => Object.entries(summary.value?.federated.methods || {}).map(([key, value]) => ({ name: key, auc: value.test.auc.toFixed(4), sizes: value.client_sizes?.join(' / ') || '集中式', weights: value.round_trace?.at(-1).weights.map(x => x.toFixed(3)).join(' / ') || '—' })))
 const failure = e => { error.value = String(e.response?.data?.detail || e.message) }
 async function loadPatient() {
@@ -157,6 +172,18 @@ async function startFeatures() {
       }
     }
   } finally { featureSubmitting.value = false }
+}
+async function exportFeatures() {
+  if (!featureCase.value || featureJob.value?.state !== 'succeeded' || featureJob.value?.stale) return
+  featureExporting.value = true; featureError.value = ''
+  try {
+    const response = await request.get(`/research/cases/${featureCase.value}/features.csv`, { responseType: 'blob' })
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    link.href = url; link.download = `brainfusion-case-${featureCase.value}-features.csv`
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (e) { featureError.value = String(e.response?.data?.detail || e.message) }
+  finally { featureExporting.value = false }
 }
 onMounted(async () => {
   try {

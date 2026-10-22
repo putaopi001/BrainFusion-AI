@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.database import SessionLocal
 from app.models.analysis_run import AnalysisRun
+from app.models.feature import MRIFeature
 from app.models.mri import MRI
 from app.research.dataset import sha256
 from app.research.feature_contract import PROTOCOL, selected_features, contract_hash, feature_matrix
@@ -57,7 +58,14 @@ def current(case_id, db):
     items = states(case_id, mri.analysis_run_id) if mri.analysis_run_id else []
     if not items:
         return None
-    state = items[0][1]
+    directory, state = items[0]
+    if state.get('state') == 'succeeded' and isinstance(state.get('result'), dict) and not state['result'].get('protocol'):
+        try:
+            protocol = json.loads((directory / 'request.json').read_text(encoding='utf-8')).get('protocol')
+            if isinstance(protocol, dict) and protocol:
+                state = {**state, 'result': {**state['result'], 'protocol': protocol}}
+        except (OSError, ValueError, TypeError):
+            pass
     clinical = case_research_input.current(case_id, db)
     if not case_research_input.matches(state, clinical):
         # Presentation only: keep the historical state/result file intact.
@@ -93,6 +101,32 @@ def compatibility(summary, bundle):
     if audit['status'] != 'passed' or any(audit[key] != value for key, value in expected.items()):
         raise ValueError('Feature reproduction gate is stale or failed; rerun verify_feature_extraction.py')
     return expected
+
+
+def persist_feature_record(case_id, mri_id, analysis_run_id, job_id, result):
+    """Idempotently index successful research features in the existing MRI feature table."""
+    feature_type = f'research_radiomics:{analysis_run_id}:{job_id}'
+    record_data = {
+        'schema': 'research-radiomics-v1', 'case_id': case_id, 'mri_id': mri_id,
+        'analysis_run_id': analysis_run_id, 'job_id': job_id,
+        'research_run_id': result['research_run_id'], 'feature_source': result['feature_source'],
+        'contract_sha256': result['contract_sha256'], 'protocol': result['protocol'],
+        'versions': result['versions'], 'input_sha256': result['input_sha256'],
+        'mask_sha256': result['mask_sha256'], 'region_voxel_counts': result['region_voxel_counts'],
+        'features': result['selected_features'], 'extraction_seconds': result['extraction_seconds'],
+    }
+    with SessionLocal() as db:
+        mri = db.get(MRI, mri_id)
+        if mri is None or mri.case_id != case_id or mri.analysis_run_id != analysis_run_id:
+            raise ValueError('MRI lineage changed before radiomics persistence')
+        record = db.query(MRIFeature).filter_by(mri_id=mri_id, feature_type=feature_type).first()
+        if record is None:
+            record = MRIFeature(mri_id=mri_id, feature_type=feature_type,
+                                feature_data=json.dumps(record_data, sort_keys=True, allow_nan=False))
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+        return record.id
 
 
 def submit(case_id, age, female, db):
@@ -177,15 +211,19 @@ def execute(directory):
                 raise ValueError('Current MRI or segmentation version changed during extraction')
             if not case_research_input.matches(state, case_research_input.current(state['case_id'], db)):
                 raise ValueError('Clinical input version changed during extraction; please retry')
+            mri_id = mri.id
+        feature_result = {'target': 'idh1/2=1', 'feature_source': 'automatic model mask', 'device': 'cpu',
+                          'probabilities': {'clinical': c, 'automatic_mask_radiomics': r, 'average': (c + r) / 2,
+                                            'fixed': .6 * c + .4 * r, 'validation_topsis': float(c * bundle['topsis_weights'][0] + r * bundle['topsis_weights'][1])},
+                          'contract_sha256': gate['contract_sha256'], 'selected_features': extraction['features'],
+                          'region_voxel_counts': extraction['region_voxel_counts'], 'versions': extraction['versions'],
+                          'protocol': request['protocol'], 'input_sha256': extraction['input_sha256'],
+                          'mask_sha256': extraction['mask_sha256'], 'extraction_seconds': extraction['seconds']}
+        feature_result['feature_record_id'] = persist_feature_record(
+            state['case_id'], mri_id, state['analysis_run_id'], state['id'], feature_result)
         state['state'] = 'succeeded'
-        state['result'] = {'target': 'idh1/2=1', 'feature_source': 'automatic model mask', 'device': 'cpu',
-                           'probabilities': {'clinical': c, 'automatic_mask_radiomics': r, 'average': (c + r) / 2,
-                                             'fixed': .6 * c + .4 * r, 'validation_topsis': float(c * bundle['topsis_weights'][0] + r * bundle['topsis_weights'][1])},
-                           'contract_sha256': gate['contract_sha256'], 'selected_features': extraction['features'],
-                           'region_voxel_counts': extraction['region_voxel_counts'], 'versions': extraction['versions'],
-                           'input_sha256': extraction['input_sha256'], 'mask_sha256': extraction['mask_sha256'],
-                           'extraction_seconds': extraction['seconds'],
-                           'disclaimer': '工程迁移实验：使用自动掩膜，但分类模型仍在参考掩膜特征上拟合；尚未重拟合、校准或独立评价，不能诊断。'}
+        feature_result['disclaimer'] = '工程迁移实验：使用自动掩膜，但分类模型仍在参考掩膜特征上拟合；尚未重拟合、校准或独立评价，不能诊断。'
+        state['result'] = feature_result
     except Exception as error:
         state['state'], state['error'], state['result'] = 'failed', str(error), None
     state['finished_utc'] = now()
