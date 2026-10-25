@@ -1,6 +1,6 @@
 # BrainFusion-AI 架构说明
 
-更新：2026-10-22。本文描述冻结候选 `BF-RC-20261021.1`、其独立几何修复分支和隔离验收运行时。这是教学科研工程原型，不是临床诊断或临床阅片系统。
+更新：2026-10-25。本文描述当前正式 geometry-fix 版本与隔离研究运行时。这是教学科研工程原型，不是临床诊断或临床阅片系统。早期冻结状态记录保留作历史。
 
 ## 组件与边界
 
@@ -66,3 +66,9 @@ UPENN-GBM-00001 的四组 NIfTI 分别转换；源数据来自不同 Study/Frame
 - Protected `GET/POST /research/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation` and `.csv` routes compare a current model mask only with an uploaded NIfTI reference annotation. They validate analysis lineage, all four MRI grids, and reference shape/affine; arbitrary filesystem paths are not accepted. WT/TC/ET Dice, physical-space HD95 in mm, TP/FP/FN, precision and recall have explicit empty-region semantics. Idempotent evaluation JSON and a content-addressed reference NIfTI live under the configured isolated upload runtime; no database schema migration is required.
 - The Research page exposes the evaluation status, provenance, regional metrics, and CSV only from API results; absent reference labels show `NOT_AVAILABLE`. Local doctor login and the user's authorization assertion do not verify external research permission or professional credentials. Synthetic Edge acceptance proves the engineering flow only; no real patient Dice/HD95 result or model-accuracy claim exists.
 - The research experiment addendum in `EXPERIMENT_PROTOCOL.md` defines data admission, patient-level split/leakage controls, metrics, provenance and the current distinction between engineering demonstration and approved research. UPENN inference remains blocked by the unsigned model-input checklist; formal geometry-fix release remains separately approval-gated.
+
+## Current production and research snapshot — 2026-10-25
+
+- The project owner explicitly approved the specified Runbook release. Formal backend/frontend now run `bf-rc-20261022.1-geometry-fix`; both are healthy and HTTP 200. The production database was not restored or migrated. SQLite integrity, cases 17/19, 197 runtime artifacts, and rollback assets were checked. PACS import, DICOM view, pixel read and AI bridge gates remain disabled. See `E:\BrainFusion-Runtime\research-edition\evidence\release-geometry-fix-20261025.json`.
+- One owner-approved isolated inference ran against official co-registered UPENN BIDS `sub-002`. Four MRI channels were T1c/T1/T2/FLAIR, 1 mm LPS on a shared grid; MONAI BraTS SegResNet used the pinned checkpoint and CUDA. The prediction is an exploratory engineering artifact. A 128×128×96 sliding window was used to fit the available GPU budget, instead of the bundle's 240×240×160 ROI. Output and run metadata are stored only in the research runtime listed in `TASK_STATE.json`.
+- The candidate reference mask is grid-compatible, but exact sub-002 label integer semantics, subject-level annotation provenance and checkpoint overlap have not been verified. No reference metrics are available. Survival modeling is also blocked pending authoritative IDC v25 field definitions and image-clinical crosswalk.

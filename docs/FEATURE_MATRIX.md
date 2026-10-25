@@ -1,6 +1,15 @@
 # BrainFusion-AI 功能矩阵
 
-更新：2026-10-22（研究增强版最终验收）。状态含义：**已完成并验收**＝现有冻结/隔离路径有实测证据；**已实现未发布**＝修复版已构建/克隆验收，正式环境仍运行冻结版；**等待人工批准**＝需本人签署模型输入审核或批准正式发布；**BLOCKED_BY_DATA**＝数据口径/许可不足，不能开展研究建模；其他状态保持原定义。
+更新：2026-10-25（最终冲刺授权后复核）。下方较早条目保留历史；如与“2026-10-25 当前核验快照”冲突，以该快照和对应运行证据为准。
+
+## 2026-10-25 当前核验快照
+
+- **正式发布 PASS**：按获批 Runbook 将 `bf-rc-20261022.1-geometry-fix` 部署到正式 backend/frontend。容器健康，18100/18180 HTTP 200；目标镜像 ID、回滚镜像、数据库备份及 197 个运行文件均已核验。SQLite `integrity_check=ok`、零 FK 违规；病例 17/19 与备份逻辑记录一致；没有执行数据库恢复或迁移。正式 PACS、DICOM view、pixel read、AI bridge 门控均保持关闭。证据：`E:\BrainFusion-Runtime\research-edition\evidence\release-geometry-fix-20261025.json`。
+- **UPENN sub-002 单例探索性推理 PASS**：使用官方共配准 NIfTI、MONAI BraTS SegResNet 固定权重，在隔离科研环境的 RTX 5070 Ti Laptop CUDA 执行一次推理。输入/模型 SHA、版本、运行设备与输出已记录。输出是工程探索结果，不是临床验证。使用受显存约束的滑窗 ROI `[128,128,96]`，不同于官方 bundle ROI `[240,240,160]`；该差异必须在解释结果时披露。预测掩膜、WT/TC/ET 体积和三平面叠加图见 `E:\BrainFusion-Runtime\research-edition\results\upenn-sub002-segresnet-20261025\run-20261025T222645`。
+- **真实标签评价 NOT_RUN**：候选参考标签与 MRI 共空间，但该受试者的人工/算法标签来源及整数类别语义尚未确认；未计算 Dice、HD95、precision 或 recall。不能把这一预测作为模型性能声明。
+- **生存软件 PASS / 真实队列 BLOCKED_BY_DATA_DICTIONARY**：IDC v25 聚合复核为 671 行/630 个 DICOM PatientID，611 条基线影像记录；按尚未确认的列映射得到 608 条候选 OS（585 候选事件、23 候选删失、3 条状态不确定）。官方队列论文报告 OS 可用人数为 452；现有证据不能逐列解释两者差异。未拟合真实 KM/Cox，也未建立 sub-002 与临床表的患者级 crosswalk。
+- **影像组学与分割评价软件**：影像组学新任务 SQL/API/进程重启/CSV 核验 PASS（20 项特征，未重跑分割）；同一新任务 Edge 回放因本机执行策略拒绝后台监听启动而未运行，未绕过策略。分割评价 API/UI 的隔离合成数据验收 PASS，不代表真实标签性能。
+- **Git**：本轮文档完成后记录最终提交与远程核验 SHA；既有未跟踪 `data/` 不纳入提交。
 
 ## 最终交付分类
 
@@ -19,8 +28,8 @@
 | 6 | DICOMweb Study/Series/Instance 查询 | 隔离阅片工作站及后端代理 | `backend/app/services/pacs_client.py`、`backend/app/services/pacs_wado.py`、`backend/app/api/pacs.py` | **隔离实测**：四序列 QIDO 计数和 SOP UID 集合核验通过；WADO 实例及帧像素读取通过 | 只证明该隔离归档/测试路径可用；正式 PACS 未验收 |
 | 7 | Cornerstone DICOM 阅片 | `/workstation/:id?source=dicom...` | `frontend/src/components/mri/CornerstoneViewer.vue`、`backend/app/api/pacs.py` | **隔离真实像素实测**：T1c/T1 各192层、T2 192层、FLAIR 60层；滚动、窗宽窗位及序列切换通过，无浏览器/网络错误 | 三平面渲染不等同于跨序列配准质量或临床阅片认可；仅隔离环境 |
 | 8 | DICOM→NIfTI 转换 | 病例详情“转换作业” | `backend/app/services/dicom_conversion.py`、`backend/app/services/dicom_conversion_jobs.py`、`backend/app/api/pacs.py` | **条件通过**：636 个 UPENN 实例完成解码；四候选序列逐序列转换已有记录 | 源序列各自空间不同；转换不等于空间配准或模型输入批准 |
-| 9 | 四序列配准与标准化 | 后端审核/准备流程 | `backend/app/services/dicom_resampling.py`、`backend/app/services/dicom_input_plan.py`、`backend/app/services/study_validation.py` | **已实现未发布 / 等待人工批准**：geometry-fix 版修复了 FLAIR/T2 spacing 误判；UPENN T1c/T2w 三平面叠加、棋盘格、局部视野图已生成；候选网格和变换复算通过 | T2w 目标网格源覆盖 80.79%；红色为源视野外。疑似肿瘤邻近覆盖无法由现有代理证明；输入清单仍未签署，UPENN 推理未执行 |
-| 10 | MONAI SegResNet 分割 | 病例分析入口/API | `backend/app/ai/imaging/monai_segmenter.py`、`backend/app/api/analysis.py` | **隔离真实推理通过**：RC Docker 对已许可 WAW-GliomAI 工程样本执行 MONAI BraTS SegResNet，无 fallback | 单个工程样本不代表临床精度；UPENN 未推理 |
+| 9 | 四序列配准与标准化 | 后端审核/准备流程 | `backend/app/services/dicom_resampling.py`、`backend/app/services/dicom_input_plan.py`、`backend/app/services/study_validation.py` | **正式 geometry-fix 已发布；sub-002 官方共配准输入 QC 通过** | 既有原始 DICOM 配准候选的覆盖局限仍不得推断为肿瘤 ROI 覆盖；本次推理直接使用官方共配准输入 |
+| 10 | MONAI SegResNet 分割 | 病例分析入口/API | `backend/app/ai/imaging/monai_segmenter.py`、`backend/app/api/analysis.py` | **隔离真实推理通过**：WAW 工程样本，以及获批的一次官方 UPENN sub-002 CUDA 探索推理均有独立证据 | sub-002 使用显存约束滑窗 ROI，与官方配置不同；不是临床验证。无已核实参考标签语义/来源，未计算真实性能指标 |
 | 11 | 掩膜可视化 | NIfTI 工作站“显示/隐藏分割” | `frontend/src/components/mri/CornerstoneViewer.vue`、`backend/app/api/mri.py` | **隔离实测**：工作站提供三正交 canvas；真实输出掩膜开关可用 | 结果须人工核对；演示标识不是临床审核签署 |
 | 12 | WT/TC/ET 体积与分割评价 | 病例报告、`/research/cases/{case_id}/analysis/{analysis_run_id}/segmentation-evaluation` 及 `.csv` | `backend/app/services/segmentation_metrics.py`、`backend/app/services/segmentation_evaluation.py`、`backend/app/api/research.py`、`frontend/src/views/Research.vue` | **合成软件验收 PASS**：受控 NIfTI 上传、登录/授权门控、病例与当前分析来源校验、shape/affine 检查、WT/TC/ET Dice、HD95(mm)、precision/recall、TP/FP/FN、幂等记录及 CSV；定向 pytest 22 passed；隔离 FastAPI→Vue→Edge→CSV 实测无浏览器/请求错误 | 仅合成工程标签，未评价真实患者参考标注，不能作为模型准确率；本地 doctor 会话不验证外部研究授权或专业资质。无标签时为 `NOT_AVAILABLE`；评价证据保存在隔离上传 runtime，不新增数据库 schema |
 | 13 | 分析任务状态与失败处理 | `/analysis`、病例详情分析历史 | `backend/app/services/analysis_jobs.py`、`backend/app/api/analysis.py` | **部分隔离验证**：RC 运行记录 `succeeded` 并可在服务重启后读取；历史 `test_analysis_state.py` 存在 | 重试/崩溃恢复的全路径未在本次 RC 执行；失败任务须检查日志再重试 |
@@ -29,8 +38,8 @@
 | 16 | 结构化报告 | `/report?case_id=1` | `backend/app/api/reports.py`、`backend/app/services/current_report.py`、`frontend/src/views/Report.vue` | **隔离实测**：Edge 展示该次分析的模型、体积、限制和来源追溯 | 医生复核显示“待复核”；报告不是临床诊断 |
 | 17 | 结果与报告版本关联 | 报告页及病例分析历史 | `backend/app/models/analysis_run.py`、`backend/app/models/report.py`、`backend/app/services/artifact_integrity.py` | **隔离实测**：analysis run 与 report 同 ID 关联；后端重启后结果/掩膜/报告仍存在 | 当前新 RC 只演示一个分析版本；多版本比较场景未在本次彩排 |
 | 18 | 用户身份、角色与审核权限 | 本地登录/复核界面 | `backend/app/api/local_auth.py`、`backend/app/services/local_auth.py`、`backend/app/core/dependencies.py` | **隔离实测**：合成本地 doctor 会话完成登录、CSRF 保护的评价读取/上传/CSV；未登录与未授权写入有 401/403 定向测试 | 本地账户只作操作归属，不代表执业资质、数据许可或第二审核人；正式账户环境未在本轮操作 |
-| 19 | 前后端部署 | 正式/隔离 Docker Compose | `docker-compose.rc.yml`、正式审批包、`backend/Dockerfile`、`frontend/Dockerfile` | **正式冻结版已完成并验收**：当前正式 18100/18180 healthy；geometry-fix 两镜像在克隆正式库环境 18108/18188 均健康并已停止 | **修复版已实现未发布**：最终预检 GO；只有一次正式前后端替换审批尚待完成；PACS/像素/AI bridge 门控保持关闭 |
-| 20 | 数据备份与恢复 | `E:\BrainFusion-Runtime\backups` | SQLite 官方在线备份；部署验收记录 | **已完成并验收**：geometry-fix 最终预检备份 `geometry-fix-preflight-20261022T20261022T122945` integrity/FK 通过；克隆 schema/状态/记录未变；197/197 运行文件哈希匹配 | 备份为回滚基线，不得覆盖；部署后 DB 恢复须另行批准 |
+| 19 | 前后端部署 | 正式/隔离 Docker Compose | `docker-compose.rc.yml`、正式审批包、`backend/Dockerfile`、`frontend/Dockerfile` | **正式 geometry-fix 发布 PASS**：18100/18180 healthy，镜像与 Runbook 目标匹配；SQLite、病例 17/19、197 个运行文件验收通过 | 回滚镜像及 Runbook 保留；正式 PACS/像素/AI bridge 门控仍关闭 |
+| 20 | 数据备份与恢复 | `E:\BrainFusion-Runtime\backups` | SQLite 官方在线备份；部署验收记录 | **发布前后验收通过**：备份 `integrity_check=ok`/零 FK 违规；正式 DB 与备份逻辑表内容一致；197/197 运行文件哈希匹配 | 回滚基线保留；本次未执行数据库恢复或迁移 |
 | 21 | 日志与错误处理 | Docker logs、PACS 状态与 API 错误 | `backend/app/core/logging.py`、`backend/app/services/worker_error.py` | **部分实测**：容器健康检查与 API fail-closed 状态可读；浏览器彩排无失败请求 | 未对所有故障注入；日志可能含敏感元数据，不应直接外传 |
 | 22 | LLM 报告、RAG、多模态 MRI | 暂无产品入口 | 暂无本 RC 服务实现 | **本轮不实现；仅未来规划** | 后续需独立方案、数据授权、评测和安全边界；不能宣传为当前功能 |
 

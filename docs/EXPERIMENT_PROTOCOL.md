@@ -97,3 +97,11 @@ TOPSIS-Fed 评价方案在实现前二选一并固定：
 - 新建的影像组学验证任务只复用了既有获准工程 MRI 与既有 MONAI SegResNet 掩膜，没有重新运行分割。20 项 PyRadiomics 特征在独立 SQLite 克隆中完成提取、SQL 关联、幂等重试、独立 FastAPI 进程重启读取及 CSV 数值/指纹核对；脚本、协议和软件版本记录在 `E:\BrainFusion-Runtime\research-edition\evidence\radiomics-live-20261025`。第一次尝试在 SQL 记录组装阶段发现结果缺少 `research_run_id`，修复后在新克隆上成功；失败记录保留。
 - 本次新任务的 Edge 页面未重新运行：本机执行策略拒绝启动隔离后台监听进程，未用其他启动手段规避。2026-10-22 已有 Edge 对真实 FastAPI 的 20 项特征显示与 CSV live E2E 证据，但使用先前结果回放，应与本次新任务持久化/API 结果分开陈述。
 - sub-002 的 2026-10-25 只读检查重算文件哈希、四序列 LPS/1 mm 同网格和项目现有 LPS 非零体素 z-normalization 输入契约，未加载权重或执行模型前向。正式源论文说明临床表提供生存数据的队列规模与起点概述，但没有把 IDC v25 的列名逐列映射；IDC 自身说明 collection-specific 表可能缺少数据字典。因此真实 OS 拟合维持 `BLOCKED_BY_DATA_DICTIONARY`。不从 sub-002 序号推断 UPENN 病人映射，也不把算法标签候选当作该受试者人工核准参考标签。
+
+## 授权后执行记录（2026-10-25）
+
+- **sub-002 单例探索推理**：项目负责人授权范围内，官方共配准 MRI 经来源哈希、T1c/T1/T2/FLAIR 通道顺序、有限值、1 mm LPS shape/affine 检查后，使用 MONAI BraTS SegResNet pinned checkpoint 在 CUDA 上运行一次。输出掩膜和体积、设备、耗时、权重/输入/输出 SHA-256 及三平面叠加图记录于 `E:\BrainFusion-Runtime\research-edition\results\upenn-sub002-segresnet-20261025\run-20261025T222645`。运行 ROI 为 128×128×96，以适配 12 GB GPU；模型包配置为 240×240×160，故此结果不是完整配置复现。仅为单病例探索性推理，不是模型验证或临床结果。
+- 候选参考分割与影像物理网格一致，但资产未确认 sub-002 逐例人工复核来源及准确整数标签映射；亦无 checkpoint 与 UPENN 患者重叠审计。因此 `Dice/HD95/precision/recall = NOT_RUN`，不对掩膜数值作性能解释。UPENN 集合的官方发布与队列论文可参考 [TCIA UPENN-GBM release](https://github.com/data-nih/tcia/blob/main/upenn-gbm.md) 和 [cohort paper](https://www.nature.com/articles/s41597-022-01560-7)；其一般说明不能替代逐病例标签来源证明。
+- **生存数据审计**：IDC v25 汇总统计 671 行/630 个 DICOM PatientID，基线 `_11` 611 行；当前未核准映射下的候选 OS 为 608（585 候选事件、23 候选删失、3 条不确定）。UPENN 队列论文提及 OS 有效样本 452；当前证据未能解释 608 与 452 的差额，也未权威确认时间零点、删失时长或逐列语义。IDC 文档提示 collection-specific 临床表可能缺乏数据字典（[IDC clinical metadata documentation](https://learn.canceridc.dev/data/organization-of-data/clinical)）。故没有真实 KM/Cox；需 TCIA/IDC 发布方字段定义及可靠影像-临床 crosswalk 后再进行患者级分析。
+- **正式发布**：2026-10-25 按指定 Runbook 完成获批 geometry-fix 发布；验收、数据库/病例/文件完整性和门控状态见发布 JSON 证据。正式门控仍关闭，未进行数据库恢复/迁移。
+- 生存实验预案继续使用经核实的一致 OS 定义和患者级分割；在字段字典、数据授权和影像-临床 crosswalk 满足前，KM/Cox仅可使用明确标识的合成样本测试软件，不产生真实研究估计。

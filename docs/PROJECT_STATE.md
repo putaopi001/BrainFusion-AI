@@ -1,5 +1,19 @@
 # Project execution state
 
+## Current verified state — 2026-10-25 (authorization follow-up)
+
+This snapshot supersedes earlier dated statements below where they say UPENN inference or geometry-fix production release was still awaiting approval. Those statements remain as historical records.
+
+- **Source**: `codex/research-edition-20261022`, baseline before this documentation update `965d60ff0f8ae55fef60521c6ec0ec365a46cbc4`. The pre-existing untracked `data/` remains preserved and excluded from Git.
+- **Formal release: PASS**. The project owner explicitly authorized the exact existing Runbook and target `bf-rc-20261022.1-geometry-fix`. Backend/frontend containers are healthy on 18100/18180 and serve HTTP 200. SQLite integrity is `ok`, foreign-key violations are zero, logical records in all 17 tables match the Runbook backup, case 17/19 states and reports match, and all 197 runtime files match size/hash. Rollback images and Runbook remain. No DB restore/migration occurred; all formal PACS/DICOM/pixel/AI gates remain false. Evidence: `E:\BrainFusion-Runtime\research-edition\evidence\release-geometry-fix-20261025.json`.
+- **UPENN sub-002: one isolated exploratory inference PASS**. The owner approved exactly one run on the official co-registered BIDS inputs. The four MRI inputs matched official release hashes and shared a 240×240×155, 1 mm LPS grid. MONAI BraTS SegResNet pinned revision `370f7f9d062745fbac445e7fe6d6616d35df04ec`, checkpoint SHA-256 `860ccb3f1c21c99d0410ad8a1ac4ef6b8fab60cec0a503b0ba42675741a750ae`, ran on CUDA. Output mask SHA-256 is `a2e90567d49653a2966c2f8e4dfbcfdbbd91a1550ccd7c9ed43bee60a6ee9cfd`. WT/TC/ET volumes are 140.221007/42.390002/24.299001 mL. The GPU-bounded sliding ROI was 128×128×96 rather than the bundle's 240×240×160; this is an exploratory configuration deviation, not an exact reproduction. Artifacts: `E:\BrainFusion-Runtime\research-edition\results\upenn-sub002-segresnet-20261025\run-20261025T222645`.
+- **Reference metrics: NOT RUN**. Candidate mask and MRI grids agree, but `sub-002` annotation provenance and exact integer label semantics are not established. No Dice/HD95/precision/recall or accuracy claim is made. The checkpoint's patient-level training overlap is also unknown.
+- **Survival audit: aggregate-only PASS; real KM/Cox BLOCKED_BY_DATA_DICTIONARY**. IDC v25 contains 671 scan rows/630 DICOM PatientIDs; baseline suffix `_11` has 611 records. A provisional, unapproved field mapping yields 608 candidate OS records (585 candidate events, 23 candidate censored, 3 uncertain). The cohort paper reports OS available for 452, and available source materials do not reconcile that difference or authoritatively define the exact v25 fields. No patient-level model was fitted; no UPENN BIDS-to-DICOM clinical crosswalk was inferred.
+- **Radiomics/segmentation software**: new 20-feature task SQL/API/restart/CSV lineage checks passed in an isolated DB clone without rerunning SegResNet. Same-new-task Edge replay is `BLOCKED_BY_LOCAL_EXECUTION_POLICY`; no bypass was attempted. Segmentation evaluation API/UI synthetic software acceptance remains PASS; real reference-label metrics remain unavailable.
+- **Overall delivery**: `DONE_WITH_EXTERNAL_BLOCKERS`. Remaining blockers are authoritative per-subject reference annotation provenance/label mapping and checkpoint overlap; IDC v25 source dictionary/time-origin/censor semantics plus reliable image-clinical crosswalk; and the exact-new-task Edge replay if a same-task browser demonstration is required.
+
+Primary evidence files are listed in `E:\BrainFusion-Runtime\research-edition\TASK_STATE.json` and `PROGRESS.md`.
+
 Updated: 2026-10-22 (Asia/Shanghai)
 
 ## Current continuation status — 2026-10-22
