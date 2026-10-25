@@ -250,7 +250,8 @@ def execute(directory):
             if not case_research_input.matches(state, case_research_input.current(state['case_id'], db)):
                 raise ValueError('Clinical input version changed during extraction; please retry')
             mri_id = mri.id
-        feature_result = {'target': 'idh1/2=1', 'feature_source': 'automatic model mask', 'device': 'cpu',
+        feature_result = {'target': 'idh1/2=1', 'research_run_id': summary['run_id'],
+                          'feature_source': 'automatic model mask', 'device': 'cpu',
                           'probabilities': {'clinical': c, 'automatic_mask_radiomics': r, 'average': (c + r) / 2,
                                             'fixed': .6 * c + .4 * r, 'validation_topsis': float(c * bundle['topsis_weights'][0] + r * bundle['topsis_weights'][1])},
                           'contract_sha256': gate['contract_sha256'], 'selected_features': extraction['features'],
