@@ -1,5 +1,16 @@
 # Project execution state
 
+## Latest blocker resolution — 2026-10-26
+
+This is the current status; earlier dated sections are historical snapshots and do not override it.
+
+- **Release/one-time inference:** geometry-fix production release and the approved isolated sub-002 SegResNet run remain verified by their existing evidence. Neither was repeated in this task.
+- **Reference bridge:** exact mask-content evidence links the local `sub-002` reference to pinned public `UPENN-GBM-00002_11` after local `3→4` recoding (zero voxel mismatches). The scan-to-clinical association uses exact full scan keys and preserves `_11`/`_21`; it is not a DICOM PatientID mapping. MRI files in the mirror release are same-grid variants, not byte/voxel-identical inputs.
+- **Cohort and endpoint:** official v1.2 scan-key aggregate is 671 records, 630 people, 611 baseline and 60 follow-up (41 paired, 19 follow-up-only). Official `Overall Survival=available` is exactly 452 baseline deceased rows, but the historical 452 inclusion algorithm is not reproduced. Formal OS remains `BLOCKED_BY_DATA_DICTIONARY` because the updated time transformation and `Survival_Censor` semantics/unit/origin/last-contact rule are not defined by checked publisher sources; the BrainIAC paper's published 668 denominator is also not row-reconstructed.
+- **Exploratory fusion:** on one baseline row/person, the researcher-defined candidate endpoint plus four fixed CaPTk first-order features produced a common N=596 cohort (574 candidate events, 22 candidate censors). Mean five-fold patient-level CV C-index: clinical 0.649 (SD 0.025), radiomics 0.527 (SD 0.019), combined 0.651 (SD 0.026); pooled OOF 0.649/0.507/0.647. This does not establish a fusion benefit. Endpoint, internal-only validation and non-preregistered panel limits apply; no individual predictions were stored.
+- **Overall research status:** `EXPLORATORY_COMPLETE_WITH_ENDPOINT_LIMITATIONS`. No production DB/container/PACS gates, source MRI, mask or previous prediction were modified. No new inference was run.
+- **Evidence:** `E:\BrainFusion-Runtime\research-edition\results\final-blocker-resolution-20261026\analysis-v2\` and adjacent `final-blocker-resolution-report.md`; patient-level `upenn-imaging-clinical-crosswalk-run3.csv` is controlled-runtime only and not for Git.
+
 ## Final science closeout — 2026-10-26
 
 This snapshot supersedes older dated current-state summaries retained below.

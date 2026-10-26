@@ -223,7 +223,10 @@ def cox_ph(validation: Mapping, features, feature_names: Sequence[str], l2: floa
         scores = standardized[risk_set] @ fit.x
         weights = np.exp(scores - logsumexp(scores))
         residuals.extend(standardized[deaths].mean(axis=0) - weights @ standardized[risk_set])
-        residual_times.extend([float(time)] * len(deaths))
+        # Breslow handling yields one averaged residual vector per distinct
+        # event time. Keep one matching time value; repeating it per tied death
+        # misaligns the diagnostic vectors and can crash on tied event sets.
+        residual_times.append(float(time))
     residual_matrix = np.asarray(residuals, dtype=float).reshape(-1, matrix.shape[1])
     log_times = np.log(np.asarray(residual_times, dtype=float))
     checks = {}

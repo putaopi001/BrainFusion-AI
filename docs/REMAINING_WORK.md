@@ -1,5 +1,25 @@
 # 剩余工作与放行条件
 
+## Latest blocker resolution — 2026-10-26
+
+This current snapshot supersedes older statements below that the crosswalk was unavailable or no real-data exploratory model had been run. Those older sections remain as dated history.
+
+### Completed in this pass
+
+- **Scan-to-clinical crosswalk:** exact full scan key join against the pinned release manifest and official v1.2 clinical/availability assets, zero missing or duplicate IDs: 671 scans, 611 `_11`, 60 `_21`, 630 normalized people, 41 paired and 19 follow-up-only. The pinned mirror manual-mask object has a content-proven link to local `sub-002` reference mask under local-label `3→4` recoding (zero voxel differences). This does not link DICOM PatientID or assert MRI byte identity.
+- **OS cohort reconciliation:** the current official `Overall Survival=available` flag marks exactly 452 baseline rows, all deceased with positive updated event time. This explains the flag count, not the historical paper's exact cohort-selection algorithm or the censoring rules. The published 668 count remains unreconstructed.
+- **Exploratory fusion comparison:** complete four-feature cohort N=596 (574 candidate events, 22 candidate censors), 12 S1 records dropped for incomplete selected feature panel. Five-fold patient-level CV mean C-index (SD): clinical 0.649 (0.025), radiomics 0.527 (0.019), combined 0.651 (0.026). No demonstrated gain. Outcome is researcher-defined because censor field semantics remain unresolved; no individual risk estimates or external-validation claims.
+- **Cox diagnostic fix:** corrected one averaged Schoenfeld residual being paired against repeated tied event times; targeted synthetic survival tests pass.
+
+### Still blocked / next external evidence
+
+1. `OFFICIAL_ENDPOINT_VALIDATED` requires written TCIA/UPENN dictionary or confirmation defining `Survival_from_surgery_days_UPDATED` transformation and `Survival_Censor` meaning, units, time origin and last-contact derivation, plus uncertain-death handling.
+2. Reproducing the historical 452 cohort requires its row-level inclusion flow/list or full criteria mapped to the release. Reproducing BrainIAC N=668 requires its exact scan/person denominator rules.
+3. Independent segmentation validation requires the checkpoint training-subject manifest. The present content-based reference bridge does not resolve training overlap.
+4. A DICOM-specific link would require an authoritative release-to-DICOM identifier crosswalk; no number-based mapping is allowed.
+
+Evidence and aggregate results: `E:\BrainFusion-Runtime\research-edition\results\final-blocker-resolution-20261026\`. Patient-level crosswalk remains local-only. Formal deployment, production DB and security gates were not touched; no SegResNet inference was rerun.
+
 ## 2026-10-26 final research blockers
 
 This is the latest state; older dated sections below are retained as historical records.

@@ -1,5 +1,14 @@
 # 实验协议（实施前冻结）
 
+## Final blocker-resolution update — 2026-10-26
+
+The status notes below are historical where they say imaging/clinical linkage or exploratory real-data fitting was not done. Current audit evidence is in `E:\BrainFusion-Runtime\research-edition\results\final-blocker-resolution-20261026\`.
+
+- A fixed third-party manifest revision plus official TCIA clinical/availability keys yields an exact 671-scan crosswalk with `_11` and `_21` retained. Local `sub-002` reference content equals pinned `UPENN-GBM-00002_11` manual-mask content after a zero-mismatch local label `3→4` remap. This does not prove a DICOM PatientID mapping or checkpoint non-overlap.
+- Formal OS remains blocked. The baseline researcher rule treats Deceased + positive `Survival_from_surgery_days_UPDATED` as event and Alive/Lost + positive `Survival_Censor` as censor, assuming days from first surgery; this field assumption is not an official endpoint definition.
+- The exploratory same-cohort Cox comparison uses a four-feature CaPTk panel and 5-fold patient-level CV (seed 20261026, train-fold-only median imputation and Cox scaling). N=596; mean fold C-index clinical 0.649, radiomics 0.527, combined 0.651. No fusion gain is established; no individual scores are stored. Not preregistered and not independent validation.
+- The paper's 452 count matches exactly the official availability flag in the local v1.2 file, but those flagged rows are all deceased and this does not reproduce a right-censored analytic cohort. The 668 paper count remains unreconciled at row/person level.
+
 ## P0/P2 evidence update — 2026-10-26
 
 This update supersedes stale execution-status notes in older sections below; the study safeguards remain applicable.

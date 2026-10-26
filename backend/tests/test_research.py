@@ -216,6 +216,21 @@ def test_cox_ph_and_c_index_use_only_authorized_synthetic_rows():
     assert c_index > 0.65
 
 
+def test_cox_ph_schoenfeld_screen_handles_tied_event_times():
+    rows = [
+        {'pid': f'SYNTHETIC-TIE-{i}', 'duration': float(t), 'status': str(e),
+         'origin': 'synthetic-origin'}
+        for i, (t, e) in enumerate([(1, 1), (1, 1), (2, 1), (3, 1), (3, 1), (4, 0)])
+    ]
+    contract = EndpointContract('OS', 'pid', 'duration', 'status', 'origin', 'synthetic-origin',
+                                'days', '1', '0', True)
+    validation = validate_endpoint(rows, contract)
+    features = np.array([[0.0], [1.0], [0.5], [2.0], [1.5], [-0.5]])
+    fitted = cox_ph(validation, features, ['synthetic_tied_signal'], l2=0.1)
+    assert fitted['converged'] is True
+    assert fitted['proportional_hazards_screening']['features']['synthetic_tied_signal']
+
+
 def test_cox_rejects_blocked_rows_and_unspecified_imputation():
     rows = [{'pid': 'SYNTHETIC-1', 'duration': 1, 'status': '1', 'origin': 'diagnosis'}]
     contract = EndpointContract('OS', 'pid', 'duration', 'status', 'origin', 'diagnosis',

@@ -1,5 +1,16 @@
 # BrainFusion-AI 功能矩阵
 
+## Latest blocker-resolution snapshot — 2026-10-26
+
+This snapshot supersedes earlier 2026-10-26 research status blocks below; they remain historical records.
+
+- **Imaging-to-clinical crosswalk: PASS at release scan-key level.** Exact full IDs, preserving `_11`/`_21`, joined 671 pinned manifest scans to official clinical v1.2 and availability rows with no unmatched/duplicate keys (611 baseline, 60 follow-up, 630 people; 41 paired and 19 follow-up-only). Pinned mirror manual-mask content proves local `sub-002` reference mask corresponds to `UPENN-GBM-00002_11` after exact local-label `3→4` recoding with zero differing voxels. This is not a DICOM PatientID crosswalk; the four MRI release variants share geometry but are not voxel-identical. The separate UPENN-GBM-00001 DICOM patient was not linked.
+- **Official OS endpoint: BLOCKED_BY_DATA_DICTIONARY.** First-surgery context is described in the 2022 cohort paper, but exact updated event-time derivation and `Survival_Censor` unit/origin/last-contact rule remain undocumented in checked publisher assets. The official availability flag marks exactly 452 baseline rows, all deceased with positive updated time; this count alone does not reproduce the paper cohort flow or define a right-censored cohort. BrainIAC's published 668 denominator remains unreconstructed.
+- **Researcher-defined OS and fusion: EXPLORATORY.** Using baseline-only candidate endpoint and four outcome-independent CaPTk first-order features, common feature-complete N=596 (574 candidate events, 22 candidate censors) had mean five-fold patient-level CV Harrell C-index: clinical 0.649 (SD 0.025), radiomics 0.527 (SD 0.019), combined 0.651 (SD 0.026). Pooled OOF C-index: 0.649 / 0.507 / 0.647. No fusion gain is demonstrated. These are internal CV results on an unvalidated researcher-defined endpoint, not clinical prediction or external validation. No patient-level risks were saved.
+- **sub-002 segmentation:** one existing inference only. Prior WT-only public-reference agreement remains the reported metric; TC/ET are not recalculated in this crosswalk/OS task. The reference content bridge is stronger, but checkpoint training overlap remains unknown; no independent external-validation claim.
+- **Formal engineering release:** geometry-fix remains verified from 2026-10-25 evidence; this science task did not deploy or alter production.
+- Runtime evidence: `E:\BrainFusion-Runtime\research-edition\results\final-blocker-resolution-20261026\`; patient-level crosswalk is local-only and excluded from Git.
+
 ## 2026-10-26 P0/P2 final research status
 
 This snapshot supersedes the older 2026-10-25 snapshot below; those entries are retained as history.
