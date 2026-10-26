@@ -8,7 +8,22 @@
       <div class="hero-actions">
         <el-button type="primary" size="large" @click="$router.push('/cases')">进入病例管理</el-button>
         <el-button size="large" @click="$router.push('/patients')">患者管理</el-button>
+        <el-button size="large" @click="$router.push('/research')">研究演示与生存模型</el-button>
       </div>
+    </section>
+
+    <section class="demo-route">
+      <el-card shadow="never">
+        <template #header>隔离研究演示路线</template>
+        <el-steps :active="0" align-center>
+          <el-step title="病例管理" description="查看隔离工程病例" />
+          <el-step title="MRI 阅片" description="四序列与已有掩膜" />
+          <el-step title="报告" description="既有 WT/TC/ET 结果" />
+          <el-step title="研究分析" description="影像组学与探索性结果" />
+          <el-step title="合成预测" description="合成输入、研究 Cox" />
+        </el-steps>
+        <p class="demo-route-note">不同页面中的工程病例、队列研究和 SYNTHETIC_TEST 生存预测来自不同数据流程；演示时不将它们解释为同一患者的临床闭环。</p>
+      </el-card>
     </section>
 
     <section class="stat-grid">
@@ -100,6 +115,8 @@ onMounted(loadStats)
 .stat-label { font-size: 13px; color: #64748b; margin-top: 4px; }
 
 .pipeline-card :deep(.el-step__title) { font-size: 12px; }
+.demo-route { margin-bottom: 20px; }
+.demo-route-note { margin: 12px 0 0; color: #64748b; font-size: 13px; }
 @media (max-width: 900px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
 }

@@ -3,6 +3,7 @@
     <h1>IDH 与融合研究</h1>
     <p>研究终点：IDH1/2 原始值 = 1；0/1 的生物学编码尚待核实。研究概率不用于通用风险、肿瘤检测或治疗建议。</p>
     <el-alert title="研究原型：分类模型在参考掩膜特征上拟合；自动掩膜输入仅作工程迁移验证，尚无独立临床评价。" type="warning" :closable="false" />
+      <el-alert class="survival-independence-note" title="演示边界：下方 Cox 预测只使用明确标记的合成输入，与当前所选工程病例、分割结果、影像组学任务及历史生存队列互相独立；不会将这些来源拼接成患者级结果。" type="info" :closable="false" />
     <el-card class="panel survival-panel">
       <template #header>生存分析软件状态</template>
       <el-tag type="warning">{{ survivalStatus?.research_status || '读取状态中' }}</el-tag>
@@ -121,11 +122,11 @@
           <p>患者编号 {{ caseClinical.patient_id }}；输入来源：{{ caseClinical.source === 'associated_patient' ? '关联患者资料' : '此病例研究输入（患者资料未修改）' }}；版本 {{ caseClinical.version }}</p>
           <label>病例研究年龄 <el-input-number v-model="caseAge" class="case-age" :min="0" :max="120" :disabled="featureBusy" /></label>
           <el-select v-model="caseFemale" class="case-sex" style="width: 160px" placeholder="性别未知，需确认" :disabled="featureBusy"><el-option :value="false" label="男（male）" /><el-option :value="true" label="女（female）" /></el-select>
-          <el-button :disabled="!featureInputDirty || caseAge == null || caseFemale == null || featureBusy" :loading="clinicalSaving" @click="saveCaseClinical">保存病例研究输入</el-button>
+          <el-button :disabled="unifiedDemo || !featureInputDirty || caseAge == null || caseFemale == null || featureBusy" :loading="clinicalSaving" @click="saveCaseClinical">保存病例研究输入</el-button>
           <el-alert v-if="!caseClinical.available" :title="caseClinical.reason" type="warning" :closable="false" />
           <el-alert v-if="featureInputDirty" title="研究输入已修改但尚未保存；旧概率暂不显示。保存后需按新版本重新计算。" type="warning" :closable="false" />
         </div>
-        <el-button :disabled="!featureCase || featureBusy || clinicalSaving || !caseClinical?.available || featureInputDirty" :loading="featureSubmitting" @click="startFeatures">提取自动掩膜特征</el-button>
+        <el-button :disabled="unifiedDemo || !featureCase || featureBusy || clinicalSaving || !caseClinical?.available || featureInputDirty" :loading="featureSubmitting" @click="startFeatures">{{ unifiedDemo ? '演示只读：不启动新特征提取' : '提取自动掩膜特征' }}</el-button>
         <el-button :disabled="!featureCase" @click="refreshFeature">刷新任务</el-button>
         <el-alert v-if="featureError" :title="featureError" type="error" :closable="false" />
         <template v-if="featureJob">
@@ -194,9 +195,9 @@
             <el-input v-model="evaluationDatasetVersion" aria-label="评价数据集版本" placeholder="数据集/版本（合成工程测试请以 SYNTHETIC- 开头）" maxlength="160" />
             <el-input v-model="evaluationAnnotationId" aria-label="参考标注编号" placeholder="标注引用（原文仅参与哈希，不会保存）" maxlength="160" />
             <el-input v-model="evaluationAuthorizationReceipt" aria-label="授权凭据引用" placeholder="授权记录引用（仅保存摘要，不保存原文）" maxlength="512" />
-            <input aria-label="参考分割 NIfTI" type="file" accept=".nii,.nii.gz,application/octet-stream" @change="selectReferenceMask" />
+            <input aria-label="参考分割 NIfTI" type="file" accept=".nii,.nii.gz,application/octet-stream" :disabled="unifiedDemo" @change="selectReferenceMask" />
             <el-checkbox v-model="evaluationAuthorized">我确认该参考标注可用于此隔离工程评价，并已核实其来源、范围和许可。</el-checkbox>
-            <el-button type="primary" :disabled="!evaluationReferenceFile || !evaluationDatasetVersion.trim() || !evaluationAnnotationId.trim() || !evaluationAuthorizationReceipt.trim() || !evaluationAuthorized" :loading="evaluationSubmitting" @click="submitEvaluation">提交评价</el-button>
+            <el-button type="primary" :disabled="unifiedDemo || !evaluationReferenceFile || !evaluationDatasetVersion.trim() || !evaluationAnnotationId.trim() || !evaluationAuthorizationReceipt.trim() || !evaluationAuthorized" :loading="evaluationSubmitting" @click="submitEvaluation">{{ unifiedDemo ? '演示只读：评价材料不写入' : '提交评价' }}</el-button>
           </template>
         </template>
         <el-alert v-else-if="evaluationUser" title="分割评价写入需要本地 doctor 角色会话；本地角色不代表专业资质核验。" type="warning" :closable="false" />
@@ -215,6 +216,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import request from '../api/axios'
 import { useRoute } from 'vue-router'
 const route = useRoute()
+const unifiedDemo = import.meta.env.VITE_UNIFIED_RESEARCH_DEMO === 'true'
 const summary = ref(null), patient = ref(null), clinical = ref(null), error = ref(''), selected = ref('13')
 const survivalStatus = ref(null), survivalModelStatus = ref(null), survivalModels = ref([])
 const survivalModelUnavailable = ref({})
@@ -505,21 +507,26 @@ async function exportEvaluation() {
 }
 onMounted(async () => {
   request.get('/research/survival/status').then(response => { survivalStatus.value = response.data.data }).catch(failure)
-  await loadSurvivalModelStatus()
-  await loadEvaluationSession()
-  try {
-    summary.value = (await request.get('/research/summary')).data.data
-    await loadPatient()
-    cases.value = (await request.get('/cases/', { params: { status: 'analyzed' } })).data.data
-    const requestedCase = Number(route.query.case_id)
-    if (cases.value.some(item => item.id === requestedCase)) { featureCase.value = requestedCase; await changeFeatureCase() }
-  } catch (e) { failure(e) }
+  const independentLoad = async (loader, label) => {
+    try { await loader() } catch (e) { error.value = `${label}：${String(e.response?.data?.detail || e.message)}` }
+  }
+  await Promise.all([
+    independentLoad(loadSurvivalModelStatus, '生存模型状态不可用'),
+    independentLoad(loadEvaluationSession, '本地会话不可用'),
+    independentLoad(async () => { summary.value = (await request.get('/research/summary')).data.data; await loadPatient() }, '研究摘要不可用'),
+    independentLoad(async () => {
+      cases.value = (await request.get('/cases/', { params: { status: 'analyzed' } })).data.data
+      const requestedCase = Number(route.query.case_id)
+      if (cases.value.some(item => item.id === requestedCase)) { featureCase.value = requestedCase; await changeFeatureCase() }
+    }, '病例列表不可用'),
+  ])
 })
 onUnmounted(() => { mounted = false; ++featureGeneration; clearTimeout(featureTimer) })
 </script>
 <style scoped>
 .research-page { padding: 24px; max-width: 1100px; margin: auto; } .panel { margin-top: 18px; } label { margin-right: 12px; }
 .survival-curve-figure { max-width: 560px; margin: 16px 0; } .survival-curve-figure svg { width: 100%; overflow: visible; }
+.survival-independence-note { margin-top: 12px; }
 .survival-curve-figure text { fill: currentColor; font-size: 10px; } .survival-axis { stroke: #87909c; stroke-width: 1; }
 .survival-curve-line { fill: none; stroke: #2775cf; stroke-width: 3; } .survival-curve-point { fill: #2775cf; }
 </style>

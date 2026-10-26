@@ -112,3 +112,9 @@ The software prototype, clinical Cox fit, and final clinical+CaPTk Cox fit are c
 Still blocked: authoritative `Survival_Censor` meaning/unit/origin/derivation, exact updated event-time definition, and uncertain-death handling. Formal OS interpretation remains `BLOCKED_BY_DATA_DICTIONARY`. A CaPTk fusion software/model exists, but it is exploratory, showed no demonstrated gain, and is not a BrainFusion-feature model. One-year classification is `NOT_RUN`; no real-patient predictions were generated. RSF is `NOT_IMPLEMENTED` because compatible `sksurv` is unavailable. Prediction API/UI are opt-in and synthetic-only; checked-in defaults are disabled.
 
 See [`SURVIVAL_PREDICTION_CLOSEOUT.md`](SURVIVAL_PREDICTION_CLOSEOUT.md) and the runtime-only model package. No production deployment/configuration changes are part of this implementation.
+
+## Engineering demo closeout — 2026-10-26
+
+The software integration closeout is complete. Start the isolated demo with `scripts/start-unified-research-demo.ps1`; use the printed frontend URL and one-run local password, then stop with Ctrl+C. The launcher retains its runtime copy and logs, does not install packages, and never targets formal ports. See [`DEMO_GUIDE.md`](DEMO_GUIDE.md) and [`FINAL_ENGINEERING_CLOSEOUT.md`](FINAL_ENGINEERING_CLOSEOUT.md).
+
+Remaining work is scientific or approval-bound: authoritative OS censoring/time-field definitions, independent external validation and clinical authorization, and any use of this model outside explicit synthetic demonstration. No further non-LLM/RAG software blocker was found in this integration pass. The unified demo clone contains no saved feature rows for its one engineering case, so radiomics extraction remains disabled there rather than manufacturing a result.
