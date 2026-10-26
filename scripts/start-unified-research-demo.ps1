@@ -1,7 +1,9 @@
 param(
     [string]$Python = 'E:\BrainFusion-Runtime\envs\runtime311-cpu-delivery-20261017T1516_s4\python.exe',
     [string]$Node = '',
-    [string]$DemoRoot = 'E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo'
+    [string]$DemoRoot = 'E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo',
+    [switch]$RunLiveAcceptance,
+    [string]$EvidencePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,7 +60,10 @@ $keys = @(
     'RADIOMICS_COMPATIBILITY','RADIOMICS_PYTHON','MODEL_DIR','PACS_ALLOW_DOCKER_HOST','PACS_CONFIG_FILE',
     'PACS_RESEARCH_DEMO_PIXEL_READ','PACS_IMPORT_REGISTRY_FILE','PACS_IMPORT_JOBS_DIR','PACS_DERIVED_DIR','DICOM_QUARANTINE_DIR',
     'DICOM_CONVERSION_INDEX_FILE','SURVIVAL_MODEL_DIR','SURVIVAL_FUSION_MODEL_DIR',
-    'SURVIVAL_RESEARCH_PREDICTION_ENABLED','SURVIVAL_UCSF_MODEL_DIR','CORS_ORIGINS','PROJECT_NAME','VITE_API_BASE','VITE_UNIFIED_RESEARCH_DEMO'
+    'SURVIVAL_RESEARCH_PREDICTION_ENABLED','SURVIVAL_UCSF_MODEL_DIR','CORS_ORIGINS','PROJECT_NAME','VITE_API_BASE','VITE_UNIFIED_RESEARCH_DEMO',
+    'UPENN_SUB002_INPUT_DIR','UPENN_SUB002_RESULT_DIR','UPENN_SUB002_EVIDENCE_DIR',
+    'BRAINFUSION_API_URL','BRAINFUSION_WEB_URL','BRAINFUSION_TEST_USERNAME','BRAINFUSION_TEST_PASSWORD',
+    'BRAINFUSION_UNIFIED_RESULT_PATH','BRAINFUSION_UNIFIED_LIVE_E2E','BRAINFUSION_BROWSER_CHANNEL'
 )
 foreach ($key in $keys) { $savedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process') }
 
@@ -149,14 +154,17 @@ try {
         PACS_ALLOW_DOCKER_HOST = 'false'
         PACS_CONFIG_FILE = $pacsReadonlyConfigPath
         PACS_RESEARCH_DEMO_PIXEL_READ = 'true'
-        PACS_IMPORT_REGISTRY_FILE = Join-Path $configRoot 'no-pacs-registry.json'
+        PACS_IMPORT_REGISTRY_FILE = 'E:\BrainFusion-Runtime\local\pacs-import-candidates.json'
         PACS_IMPORT_JOBS_DIR = Join-Path $runtimeRoot 'pacs-import-jobs'
-        PACS_DERIVED_DIR = Join-Path $runtimeRoot 'pacs-derived'
+        PACS_DERIVED_DIR = 'E:\BrainFusion-Data\PACS-derived'
         DICOM_QUARANTINE_DIR = Join-Path $runtimeRoot 'dicom-quarantine'
         DICOM_CONVERSION_INDEX_FILE = Join-Path $configRoot 'no-dicom-conversions.json'
         SURVIVAL_MODEL_DIR = $ExpectedArtifacts[0].Directory
         SURVIVAL_FUSION_MODEL_DIR = $ExpectedArtifacts[1].Directory
         SURVIVAL_UCSF_MODEL_DIR = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\ucsf-pdgm-clinical-cox-research-v1.0.0'
+        UPENN_SUB002_INPUT_DIR = 'E:\BrainFusion-Data\UPENN-GBM\official-nifti\sub-002'
+        UPENN_SUB002_RESULT_DIR = 'E:\BrainFusion-Runtime\research-edition\results\upenn-sub002-segresnet-20261025\run-20261025T222645'
+        UPENN_SUB002_EVIDENCE_DIR = 'E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026-v2'
         SURVIVAL_RESEARCH_PREDICTION_ENABLED = 'true'
         CORS_ORIGINS = $frontUrl
         PROJECT_NAME = 'BrainFusion-AI Isolated Research Demo'
@@ -200,9 +208,29 @@ try {
     Write-Host 'Isolated BrainFusion-AI research demo is running.' -ForegroundColor Green
     Write-Host "Frontend: $frontUrl"
     Write-Host "Backend:  $apiUrl"
-    Write-Host 'Synthetic survival demo login (local-only, disposable role; not a medical credential):'
-    Write-Host "Username: $($account.username)"
-    Write-Host "Password: $($account.password)" -ForegroundColor Yellow
+    if (-not $RunLiveAcceptance) {
+        Write-Host 'Synthetic survival demo login (local-only, disposable role; not a medical credential):'
+        Write-Host "Username: $($account.username)"
+        Write-Host "Password: $($account.password)" -ForegroundColor Yellow
+    } else {
+        Write-Host 'Running opt-in live Edge acceptance with in-process synthetic demo credentials.'
+        if (-not $EvidencePath) {
+            $EvidencePath = Join-Path $DemoRoot ('evidence\unified-live-e2e-' + (Get-Date -Format 'yyyyMMddTHHmmss') + '.json')
+        }
+        $env:BRAINFUSION_API_URL = $apiUrl
+        $env:BRAINFUSION_WEB_URL = $frontUrl
+        $env:BRAINFUSION_TEST_USERNAME = $account.username
+        $env:BRAINFUSION_TEST_PASSWORD = $account.password
+        $env:BRAINFUSION_UNIFIED_RESULT_PATH = $EvidencePath
+        $env:BRAINFUSION_UNIFIED_LIVE_E2E = '1'
+        $env:BRAINFUSION_BROWSER_CHANNEL = 'msedge'
+        Push-Location $FrontendRoot
+        try {
+            & npm.cmd run test:e2e -- --grep 'isolated archive pixels and UCSF research model are live end to end'
+            if ($LASTEXITCODE -ne 0) { throw "Live isolated browser acceptance failed with exit code $LASTEXITCODE." }
+        } finally { Pop-Location }
+        Write-Host "Aggregated live acceptance evidence: $EvidencePath"
+    }
     Write-Host 'Demo DB/uploads/logs are isolated under:'
     Write-Host $DemoRoot
     Write-Host 'Close with Ctrl+C. The launcher stops only the two child processes it started; copied data and logs remain for review.'
@@ -214,9 +242,7 @@ finally {
     foreach ($proc in @($frontendProcess,$backendProcess)) {
         if ($null -ne $proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue }
     }
-    $temporaryPacsConfig = Join-Path (Join-Path $DemoRoot 'runtime\pacs-readonly') 'stage7-research.json'
-    if (Test-Path -LiteralPath $temporaryPacsConfig) { Remove-Item -LiteralPath $temporaryPacsConfig -Force }
-    if ($authPath -and (Test-Path -LiteralPath $authPath)) { Remove-Item -LiteralPath $authPath -Force }
+    # Retain the isolated config and local account file outside the repository for local demo reuse.
     foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key, $savedEnvironment[$key], 'Process') }
     if ($null -ne $lock) { $lock.Dispose() }
 }

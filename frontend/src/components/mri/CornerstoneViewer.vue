@@ -1,5 +1,5 @@
 <template>
-  <div class="cs-viewer" :data-source="dicomSource ? 'dicom' : 'nifti'" :data-state="error ? 'error' : loading ? 'loading' : 'ready'" :data-sequence="activeSequence">
+  <div class="cs-viewer" :data-source="dicomSource ? 'dicom' : researchSource ? 'research-nifti' : 'nifti'" :data-state="error ? 'error' : loading ? 'loading' : 'ready'" :data-sequence="activeSequence">
     <div class="cs-toolbar">
       <label v-if="!dicomSource">当前序列 <select v-model="requestedSequence" :disabled="loading || measurementDrawing || measurementSaving" @change="switchSequence(requestedSequence)">
         <option v-for="key in availableSequences" :key="key" :value="key">{{ labels[key] }}</option>
@@ -8,10 +8,11 @@
       <el-button v-for="tool in visibleTools" :key="tool.toolName" size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving" :type="activeTool === tool.toolName ? 'primary' : 'default'" @click="setTool(tool.toolName)">{{ toolLabels[tool.toolName] }}</el-button>
       <el-button v-if="!dicomSource" size="small" :disabled="!hasSegmentation || loading || measurementDrawing || measurementSaving" @click="toggleSegmentation">{{ segmentationVisible ? '隐藏分割' : '显示分割' }}</el-button>
       <el-button size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving" @click="resetView">重置视图</el-button>
-      <el-button v-if="!dicomSource || dicomMeasurementsAvailable" size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving || !measurementRows.some(r => !r.savedId)" @click="measurements.save()">保存测量</el-button>
-      <el-button v-if="!dicomSource || dicomViewAvailable" size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving || viewSaving" @click="saveView">保存视图</el-button>
+      <el-button v-if="!researchSource && (!dicomSource || dicomMeasurementsAvailable)" size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving || !measurementRows.some(r => !r.savedId)" @click="measurements.save()">保存测量</el-button>
+      <el-button v-if="!researchSource && (!dicomSource || dicomViewAvailable)" size="small" :disabled="loading || !!error || measurementDrawing || measurementSaving || viewSaving" @click="saveView">保存视图</el-button>
     </div>
     <p v-if="dicomSource" class="cs-note">Cornerstone3D · DICOM 患者原空间 · 滚轮切层 · 序列身份待确认；不自动配准或重采样。<span v-if="dicomMeasurementsAvailable">默认三正交平面距离按毫米保存并绑定病例、归档与序列元数据版本；旋转平面请先重置视图。</span><span v-else>当前来源仅阅片，测量保存未启用。</span>掩膜叠加、编辑与 AI 提交尚未开放。</p>
+    <p v-else-if="researchSource" class="cs-note">Cornerstone3D · UPENN sub-002 研究影像原空间 · 只读显示已核验输入和既有预测掩膜；不自动配准或重采样。</p>
     <p v-else class="cs-note">Cornerstone3D · NIfTI 原空间 · 滚轮切层 · 四序列须已同网格、1 mm；不自动配准或重采样。</p>
     <p v-if="!dicomSource" class="cs-note">{{ segmentationNote }} {{ analysisId ? '分析版本：' + analysisId : '' }} · 掩膜只读；测量按物理毫米保存；保存视图后可恢复当前序列、位置和窗值。</p>
     <p v-if="dicomSource" class="cs-note">Series UID：{{ props.dicomSelection.seriesUid }} · {{ dicomRevision }}</p>
@@ -20,7 +21,7 @@
     <p v-if="measurementNotice" class="cs-measurement-notice" role="status">{{ measurementNotice }}</p>
     <p v-if="historicalMeasurements" class="cs-note">{{ historicalMeasurements }} 条旧版本测量保留在历史记录，不叠加到当前版本。</p>
     <p v-if="loading" role="status">正在加载 {{ labels[requestedSequence] || '影像' }}…</p>
-    <div v-if="error" class="cs-error" role="alert">Cornerstone3D 渲染不可用：{{ error }}。{{ dicomSource ? 'DICOM 未加载成功，请返回病例检查来源。' : '可在顶部手动选择 Canvas。' }}</div>
+    <div v-if="error" class="cs-error" role="alert">Cornerstone3D 渲染不可用：{{ error }}。{{ dicomSource ? 'DICOM 未加载成功，请返回检查来源。' : researchSource ? '研究文件未通过哈希或空间校验，请检查已保存的研究证据。' : '可在顶部手动选择 Canvas。' }}</div>
     <div class="cs-grid" :style="{ visibility: error ? 'hidden' : 'visible' }">
       <div v-for="view in views" :key="view.id" class="cs-panel">
         <div class="cs-header">{{ view.label }} · {{ dicomSource ? 'DICOM · 身份待确认' : labels[activeSequence] || '序列未标识' }}</div>
@@ -47,9 +48,11 @@ import { parseNiftiVolume, sameGeometry } from './niftiGeometry'
 import { createMeasurementSession } from './cornerstoneMeasurements'
 import { viewportOrientationLabels } from './orientationLabels'
 
-const props = defineProps({ caseId: { type: Number, default: null }, dicomSelection: { type: Object, default: null }, archiveOnly: { type: Boolean, default: false } })
+const props = defineProps({ caseId: { type: Number, default: null }, dicomSelection: { type: Object, default: null }, archiveOnly: { type: Boolean, default: false }, researchStudy: { type: String, default: '' }, researchCsrf: { type: String, default: '' } })
 const dicomSource = Boolean(props.dicomSelection)
+const researchSource = props.researchStudy === 'upenn-sub002'
 const dicomRevision = ref('')
+let activeResearchCsrf = props.researchCsrf
 let dicomSession
 const emit = defineEmits(['view-saved'])
 const id = 'bf-cs-' + crypto.randomUUID()
@@ -76,6 +79,7 @@ const viewSaving = ref(false), viewNotice = ref('')
 let pendingView
 let dicomManifest
 let dicomViewContext
+let researchManifest
 
 function dicomSeriesEndpoint() {
   return `/pacs/cases/${props.caseId}/studies/${dicomManifest.study_uid}/series/${dicomManifest.series_uid}`
@@ -93,9 +97,15 @@ const directionLabels = ref({})
 const viewportIds = views.map(v => v.id)
 
 async function fetchVolume(url, key, labelmap = false) {
-  const response = await request.get(url, { responseType: 'arraybuffer', signal: controller.signal })
+  const headers = researchSource ? { 'X-BF-CSRF': activeResearchCsrf } : undefined
+  const response = await request.get(url, { responseType: 'arraybuffer', signal: controller.signal, headers })
   if (disposed) throw Error('阅片器已关闭')
-  const geometry = parseNiftiVolume(response.data, { labelmap, referenceGeometry: labelmap ? baseGeometry : null })
+  const trustedResearchGrid = researchSource && researchManifest?.spatial_qc?.status === 'PASS'
+    && researchManifest?.geometry?.spatial_unit_source === 'pinned_source_and_inference_spatial_qc'
+    && researchManifest?.spatial_qc?.spacing_mm?.length === 3
+    && researchManifest.spatial_qc.spacing_mm.every(value => Number.isFinite(value) && Math.abs(value - 1) < 1e-4)
+  const geometry = parseNiftiVolume(response.data, { labelmap, referenceGeometry: labelmap ? baseGeometry : null,
+    allowUnknownSpatialUnits: trustedResearchGrid })
   if (baseGeometry && !sameGeometry(baseGeometry, geometry)) throw Error('影像或掩膜空间不一致，已拒绝叠加/切换')
   const volume = volumeLoader.createLocalVolume(id + '-' + key, {
     ...geometry,
@@ -114,13 +124,17 @@ async function fetchVolume(url, key, labelmap = false) {
 }
 
 async function loadSequence(key, preserve = false) {
-  const meta = (await request.get(`/mri/${props.caseId}/volume`, { params: { sequence: key || undefined }, signal: controller.signal })).data.data
+  const meta = researchSource
+    ? { ...researchManifest?.sequences?.[key || 't1c'], id: researchManifest?.study_id,
+        sequence: key || 't1c', available_sequences: researchManifest?.available_sequences }
+    : (await request.get(`/mri/${props.caseId}/volume`, { params: { sequence: key || undefined }, signal: controller.signal })).data.data
+  if (!meta?.nifti_url) throw Error('指定序列不在经哈希核验的研究清单中。')
   if (disposed) return
   if (mriId !== undefined && mriId !== meta.id) throw Error('影像版本已改变，请重新打开工作站')
   mriId = meta.id
   if (revisions.has(meta.sequence) && revisions.get(meta.sequence) !== meta.source_revision) throw Error('序列文件已改变，请重新打开工作站')
   revisions.set(meta.sequence, meta.source_revision)
-  if (preserve && hasSegmentation.value) {
+  if (preserve && hasSegmentation.value && !researchSource) {
     const current = (await request.get(`/mri/${props.caseId}/segmentation`, { signal: controller.signal })).data.data
     if (!current.available || (current.analysis_run_id || '') !== analysisId.value) throw Error('分割版本已失效或改变，请重新打开工作站')
   }
@@ -343,13 +357,30 @@ onMounted(async () => {
       activeSequence.value = 'dicom'
       dicomRevision.value = '元数据版本：' + manifest.metadata_sha256
       viewNotice.value = manifest.data_role?.toLowerCase().startsWith('synthetic') ? 'SYNTHETIC 合成协议夹具：仅工程验证，不是真实采集或队列验收。' : '成组 DICOM 阅片；用于 AI 分析前，仍需确认四序列身份与空间条件。'
+    } else if (researchSource) {
+      if (!activeResearchCsrf) {
+        const auth = (await request.get('/local-auth/session', { signal: controller.signal })).data.data
+        if (auth.user?.role !== 'doctor' || !auth.csrf) throw Error('研究阅片需要本地 doctor 复核会话。')
+        activeResearchCsrf = auth.csrf
+      }
+      researchManifest = (await request.get('/api/research/upenn-sub002/manifest', {
+        signal: controller.signal, headers: { 'X-BF-CSRF': activeResearchCsrf },
+      })).data.data
+      await loadSequence('t1c')
+      analysisId.value = '已保存运行 · ' + (researchManifest.inference.revision || '版本未知')
+      segmentationNote.value = '只读 SegResNet 预测；公开参考一致性不是独立外部验证。'
+      const mask = (await fetchVolume(researchManifest.prediction.url, 'research-mask', true)).volume
+      segmentation.addSegmentations([{ segmentationId: id, representation: { type: toolEnums.SegmentationRepresentations.Labelmap, data: { volumeId: mask.volumeId } } }])
+      segmentationAdded = true
+      hasSegmentation.value = true
+      await waitForSegmentation()
     } else {
       await loadSequence('')
     }
     if (disposed) return
     setTool('WindowLevel')
     group.setToolActive(StackScrollTool.toolName, { bindings: [{ mouseButton: toolEnums.MouseBindings.Wheel }] })
-    if (!dicomSource) {
+    if (!dicomSource && !researchSource) {
     const info = (await request.get(`/mri/${props.caseId}/segmentation`, { signal: controller.signal })).data.data
     analysisId.value = info.analysis_run_id || ''
     segmentationNote.value = info.disclaimer || '当前没有可用分割'

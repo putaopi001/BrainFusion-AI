@@ -21,6 +21,7 @@
         <el-menu-item index="/cases"><span class="menu-dot"></span>病例管理</el-menu-item>
         <el-menu-item index="/patients"><span class="menu-dot"></span>患者管理</el-menu-item>
         <el-menu-item index="/dicom-archive"><span class="menu-dot"></span>隔离 DICOM 归档</el-menu-item>
+        <el-menu-item v-if="unifiedResearchDemo" index="/research/upenn-sub002"><span class="menu-dot"></span>UPENN sub-002 分割研究</el-menu-item>
         <el-menu-item index="/research"><span class="menu-dot"></span>IDH 与融合研究</el-menu-item>
       </el-menu>
 
@@ -54,8 +55,10 @@ import { useCaseStore } from "./stores/case"
 
 const route = useRoute()
 const caseStore = useCaseStore()
+const unifiedResearchDemo = import.meta.env.VITE_UNIFIED_RESEARCH_DEMO === 'true'
 
 const activeMenu = computed(() => {
+  if (route.path.startsWith('/research/upenn-sub002')) return '/research/upenn-sub002'
   if (route.path.startsWith("/research")) return "/research"
   if (route.path.startsWith("/cases")) return "/cases"
   if (route.path.startsWith("/patients")) return "/patients"
@@ -64,6 +67,7 @@ const activeMenu = computed(() => {
 })
 
 const pageTitle = computed(() => {
+  if (route.path.startsWith('/research/upenn-sub002')) return 'UPENN sub-002 分割研究'
   if (route.path.startsWith("/research")) return "IDH 与融合研究"
   if (route.path.startsWith("/cases")) return "病例管理"
   if (route.path.startsWith("/patients")) return "患者管理"

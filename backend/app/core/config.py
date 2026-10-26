@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     SURVIVAL_FUSION_MODEL_DIR: str = ""
     SURVIVAL_UCSF_MODEL_DIR: str = ""
     SURVIVAL_RESEARCH_PREDICTION_ENABLED: bool = False
+    # Read-only, isolated research entry for the already reviewed UPENN sub-002
+    # inference. Empty by default so formal deployments expose no such files.
+    UPENN_SUB002_INPUT_DIR: str = ""
+    UPENN_SUB002_RESULT_DIR: str = ""
+    UPENN_SUB002_EVIDENCE_DIR: str = ""
 
     # CORS 允许来源（逗号分隔字符串，部署时通过环境变量覆盖）
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"

@@ -76,6 +76,34 @@ def import_candidates():
              'latest_import':pacs_import.current(row['candidate_id'],config)} for row in pacs_import.registry()]}}
 
 
+@router.get('/import-candidates/{candidate_id}/verify', dependencies=[Depends(no_store)])
+def verify_import_candidate(candidate_id: str):
+    """Recheck a pre-registered local source without importing or changing it."""
+    row = pacs_import.candidate(candidate_id)
+    config = load_config()
+    prepared, paths = pacs_import.checked_candidate(row, config)
+    with PacsClient(config) as archive:
+        study_rows = archive.query('studies', study_uid=prepared['study_uid'], limit=2)
+        series_rows = archive.query('series', study_uid=prepared['study_uid'], limit=8)
+        archived_instances = archive.query('instances', study_uid=prepared['study_uid'],
+                                            series_uid=prepared['series_uid'], limit=512)
+    series = [item for item in series_rows if item.get('series_uid') == prepared['series_uid']]
+    present = len(archived_instances) == len(paths)
+    return {'code': 200, 'data': {
+        'candidate_id': candidate_id, 'source_status': 'VERIFIED',
+        'source_instance_count': len(paths), 'source_integrity': 'manifest_report_and_pixel_hashes_pass',
+        'archive_status': 'PRESENT' if present else ('MISSING_OR_INCOMPLETE' if study_rows else 'NOT_IMPORTED'),
+        'archive_study_count': len(study_rows), 'archive_series_count': len(series_rows),
+        'archive_instance_count': len(archived_instances),
+        'study_uid': prepared['study_uid'], 'series_uid': prepared['series_uid'],
+        'modality': series[0].get('modality') if series else 'MR',
+        'sequence_count': 1, 'four_sequence_conversion_ready': False,
+        'conversion_block_reason': '此已登记来源只包含 1 个 MR Series；转换到模型输入还需要同一检查下来源已核验的 T1/T1GD/T2/FLAIR 四序列及通过空间契约的方案。',
+        'case_link_status': 'UNLINKED', 'import_performed': False, 'conversion_performed': False,
+        'ai_activation': False,
+    }}
+
+
 @router.get('/imports/{candidate_id}', dependencies=[Depends(no_store)])
 def import_status(candidate_id:str):
     pacs_import.candidate(candidate_id)

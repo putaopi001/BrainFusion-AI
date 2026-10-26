@@ -249,6 +249,7 @@ type="info"
       <el-button v-if="!currentVerified" type="primary" :loading="verifying" @click="verifyAI">确认当前分割结果</el-button>
       <el-tag v-else type="success">医生已确认当前版本</el-tag>
       <el-button @click="router.push(`/research?case_id=${caseId}`)">自动掩膜特征研究</el-button>
+      <el-button v-if="unifiedResearchDemo" @click="router.push('/research/upenn-sub002')">查看独立 UPENN sub-002 研究结果</el-button>
     </div>
   </template>
 </el-card>
@@ -257,8 +258,8 @@ type="info"
 
 <el-alert
   class="box survival-status"
-  title="生存分析尚未开放个体预测"
-  description="当前没有经过独立验证的生存模型。现有公开队列仅用于工程测试，且生存时间起点尚未逐例确认；本系统不会显示个体风险等级或预计生存时间。"
+  title="生存分析研究入口与本病例分开"
+  description="研究页面提供仅限 SYNTHETIC_TEST 的 API 模型演示；不会自动将当前病例与 UPENN/UCSF 队列关联，也不会生成真实患者预测。"
   type="info"
   :closable="false"
   show-icon
@@ -368,7 +369,7 @@ v-for="item in recommendations"
 
 
 
-<el-card class="box"><template #header>生存预测</template><p>尚未接入经过验证的生存模型，当前不提供生存期或风险估计。</p></el-card>
+<el-card class="box"><template #header>生存分析研究</template><p>研究模型入口与当前病例分开。模型只接受明确标记的合成测试输入，不提供本病例预测。</p><el-button @click="router.push('/research#survival-models')">打开生存分析研究</el-button></el-card>
 
 <!-- 操作 -->
 
@@ -473,6 +474,7 @@ import { useReportStore } from "../stores/report";
 
 const route = useRoute();
 const router = useRouter();
+const unifiedResearchDemo = import.meta.env.VITE_UNIFIED_RESEARCH_DEMO === 'true';
 
 const detail = ref({});
 const caseLoaded = ref(false);

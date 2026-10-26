@@ -4,7 +4,7 @@
     <p>研究终点：IDH1/2 原始值 = 1；0/1 的生物学编码尚待核实。研究概率不用于通用风险、肿瘤检测或治疗建议。</p>
     <el-alert title="研究原型：分类模型在参考掩膜特征上拟合；自动掩膜输入仅作工程迁移验证，尚无独立临床评价。" type="warning" :closable="false" />
       <el-alert class="survival-independence-note" title="演示边界：下方 Cox 预测只使用明确标记的合成输入，与当前所选工程病例、分割结果、影像组学任务及历史生存队列互相独立；不会将这些来源拼接成患者级结果。" type="info" :closable="false" />
-    <el-card class="panel survival-panel">
+    <el-card id="survival-models" class="panel survival-panel">
       <template #header>生存分析软件状态</template>
       <el-tag type="warning">{{ survivalStatus?.research_status || '读取状态中' }}</el-tag>
       <p>{{ survivalStatus?.reason || '正在读取生存数据条件。' }}</p>

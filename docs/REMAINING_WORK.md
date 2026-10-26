@@ -2,9 +2,13 @@
 
 ## Current engineering handoff — 2026-10-26
 
-The isolated demo now provides a usable read-only Stage7 Orthanc study browser and a UCSF-PDGM GBM Cox option in the existing Research page. Live E2E evidence confirms real DICOM pixels and real artifact-backed synthetic prediction. No follow-up software implementation is needed for these paths.
+This handoff is the current integrated demo status and supersedes older dated engineering snapshots below; historical research conclusions remain valid unless this section explicitly updates them.
 
-Remaining research limits: the UCSF model has internal validation only and must remain `SYNTHETIC_TEST`; it is not a clinical prediction tool. The official UPENN survival endpoint remains blocked by its unresolved censor-field dictionary. No authoritative DICOM-to-NIfTI case association was made, and the archive page cannot convert studies or submit inference. Formal PACS/AI gates remain unchanged.
+The isolated demo now provides a usable Stage7 Orthanc study browser, a reviewed-source isolated import action, a separate UPENN sub-002 segmentation result entry, and a UCSF-PDGM GBM Cox option in the existing Research page. The latest live E2E confirms real DICOM pixels, pinned existing UPENN result/overlay/metrics, and artifact-backed synthetic prediction. No follow-up software implementation is needed for these paths.
+
+Remaining limits: the UCSF model has internal validation only and demo requests must remain `SYNTHETIC_TEST`; it is not a clinical prediction tool or valid for UPENN cases. The official UPENN survival endpoint remains blocked by its unresolved censor-field dictionary. No authoritative DICOM-to-NIfTI case association was made. The currently registered DICOM bundle has one MR series; conversion waits for same-study verified T1/T1GD/T2/FLAIR inputs and the reviewed space contract. The archive page does not submit inference. Formal PACS/AI gates remain unchanged.
+
+Latest integration evidence: `E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo\evidence\final-integration-e2e-20261026-run4.json`. It records 192/192 isolated source instances verified, 192 real HTTP 200 DICOM frame responses, existing sub-002 artifacts displayed without rerunning inference, and an API-backed UCSF synthetic curve. Demo services stopped after acceptance; formal ports and gates were unchanged.
 
 ## Latest blocker resolution — 2026-10-26
 

@@ -2,7 +2,7 @@ import * as nifti from 'nifti-reader-js'
 
 // NIfTI stores x fastest and uses RAS mm; Cornerstone uses LPS mm.
 // Preserve voxel order. No reorientation, interpolation or registration.
-export function parseNiftiVolume(buffer, { labelmap = false, referenceGeometry = null } = {}) {
+export function parseNiftiVolume(buffer, { labelmap = false, referenceGeometry = null, allowUnknownSpatialUnits = false } = {}) {
   if (nifti.isCompressed(buffer)) buffer = nifti.decompress(buffer)
   if (!nifti.isNIFTI(buffer)) throw Error('不是受支持的 NIfTI 文件')
   const h = nifti.readHeader(buffer)
@@ -10,7 +10,7 @@ export function parseNiftiVolume(buffer, { labelmap = false, referenceGeometry =
   const units = h.xyzt_units & 7
   // Existing model masks omit units. Accept only with an explicit mm MRI
   // reference and exactly matching geometry; never change the original mask.
-  if (units !== 2 && !(units === 0 && labelmap && referenceGeometry)) throw Error('NIfTI 必须明确使用毫米单位')
+  if (units !== 2 && !(units === 0 && labelmap && referenceGeometry) && !(units === 0 && allowUnknownSpatialUnits)) throw Error('NIfTI 必须明确使用毫米单位')
   if (!(h.sform_code > 0 || h.qform_code > 0)) throw Error('NIfTI 缺少有效空间变换')
   const dimensions = h.dims.slice(1, 4)
   let a = h.affine
