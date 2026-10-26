@@ -67,3 +67,18 @@ This snapshot supersedes the older 2026-10-25 snapshot below; those entries are 
 - 评价接口需要本地 doctor 会话、显式研究用途确认和用户上传的 NIfTI 参考标注；服务不接受任意磁盘路径。预测掩膜由已成功且仍关联当前 MRI 的分析任务解析，所有四序列、预测和参考标注必须处于同一 shape/affine 物理空间。
 - 各病例/分析任务的评价记录与上传标注保存在配置的隔离 upload runtime，不修改正式数据库 schema。标注编号和授权凭据正文不持久化，只保存摘要；本地登录只作操作归属，不代表核实外部授权或专业资质。
 - 22 个定向后端测试通过；生产前端构建通过；Microsoft Edge 对隔离 synthetic backend 完成登录、读取分析历史、上传合成标签、显示三分区指标并下载三行 CSV。证据位于 `E:\BrainFusion-Runtime\research-edition\evidence\segmentation-evaluation-live-20261022`。没有计算真实患者 Dice/HD95。
+
+
+## Final science closeout — 2026-10-26
+
+| Area | Current evidence status | Boundary |
+|---|---|---|
+| UPENN sub-002 segmentation | PASS — one-case `PUBLIC_REFERENCE_AGREEMENT`; WT/TC/ET metrics and overlay saved under `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026-v2` | Not independent external validation: checkpoint training overlap unknown; one subject only. Reference per-case named reviewer record unavailable.
+| Clinical OS cohort audit | PASS for source/version and cohort-flow audit; 671 scan rows, 630 normalized persons, 611 baseline, 60 follow-up | Candidate endpoint remains unvalidated; baseline-only 608 is provisional, not a formal cohort.
+| KM/Cox on clinical mirror | EXPLORATORY only | Provisional mapping; not a validated endpoint, not clinical prediction. Age PH trend screen flags concern.
+| One-year survival classification | NOT_RUN | Censor-time semantics lack authoritative definition.
+| Synthetic survival software checks | PASS, 4/4 | Engineering-only fixtures, no clinical inference.
+| Imaging-clinical fusion | BLOCKED | Authoritative patient crosswalk unavailable.
+| Formal geometry-fix release | PASS read-only current check | Containers healthy; PACS import/read/DICOM/pixel/AI gates remain disabled. Current DB integrity was not retested in this snapshot; prior release acceptance evidence retained.
+
+See `FINAL-RESEARCH-CLOSEOUT.md` in the versioned runtime evidence directory for exact methods, counts, sources and limitations.

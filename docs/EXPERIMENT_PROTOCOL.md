@@ -123,3 +123,10 @@ TOPSIS-Fed 评价方案在实现前二选一并固定：
 - **生存数据审计**：IDC v25 汇总统计 671 行/630 个 DICOM PatientID，基线 `_11` 611 行；当前未核准映射下的候选 OS 为 608（585 候选事件、23 候选删失、3 条不确定）。UPENN 队列论文提及 OS 有效样本 452；当前证据未能解释 608 与 452 的差额，也未权威确认时间零点、删失时长或逐列语义。IDC 文档提示 collection-specific 临床表可能缺乏数据字典（[IDC clinical metadata documentation](https://learn.canceridc.dev/data/organization-of-data/clinical)）。故没有真实 KM/Cox；需 TCIA/IDC 发布方字段定义及可靠影像-临床 crosswalk 后再进行患者级分析。
 - **正式发布**：2026-10-25 按指定 Runbook 完成获批 geometry-fix 发布；验收、数据库/病例/文件完整性和门控状态见发布 JSON 证据。正式门控仍关闭，未进行数据库恢复/迁移。
 - 生存实验预案继续使用经核实的一致 OS 定义和患者级分割；在字段字典、数据授权和影像-临床 crosswalk 满足前，KM/Cox仅可使用明确标识的合成样本测试软件，不产生真实研究估计。
+
+
+## Evidence from final UPENN science pass — 2026-10-26
+
+The existing sub-002 prediction was evaluated once against the public reference. Reference source labels 0/1/2/4 were reconciled to the local release's 0/1/2/3 by a pinned manual-subset file and exact voxelwise comparison; original files were unchanged. The metrics are single-case `PUBLIC_REFERENCE_AGREEMENT`; do not call this independent external validation until model training overlap is resolved. See the versioned evidence package for metric protocol, input/model hashes, overlay, scripts and output hashes.
+
+Clinical survival software was validated on explicit synthetic fixtures (KM risk set/censor/median, C-index, duplicate-patient rejection and seeded Cox convergence). UPENN v2.1 mirror values matched IDC v25 for the 671 scan IDs and checked fields. Real-data KM/Cox were run only as `EXPLORATORY` using a stated provisional censor mapping; the endpoint is not validated, one-year prediction was not run, and no patient-level predictions were produced. No imaging-clinical fusion is permitted until an authoritative patient crosswalk is available.

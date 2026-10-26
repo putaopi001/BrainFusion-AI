@@ -60,3 +60,10 @@ Potential preregistered sensitivity scenarios after endpoint verification: prima
 - 数据结论：本次仅使用合成影像、合成标签、隔离 SQLite、独立端口和本地测试账户；没有访问正式数据库、病例 17/19、UPENN 数据，也没有运行 SegResNet。不得把合成指标用于模型准确率或论文性能结论。
 - 证据目录：`E:\BrainFusion-Runtime\research-edition\evidence\segmentation-evaluation-live-20261022`（浏览器 JSON、截图及 CSV 均为合成工程材料）。
 - 后续仅剩真实标注的来源/许可与研究方案确认、独立正式发布批准、UPENN 输入审核、生存队列数据条件；无需继续扩展分割评价软件。
+
+
+## Latest final science state — 2026-10-26
+
+Completed: one-case sub-002 `PUBLIC_REFERENCE_AGREEMENT` evaluation for WT/TC/ET; exact 3↔4 reference recoding proved by 0-mismatch voxel cross-tab; versioned PNG/CSV/JSON and SHA256 manifest. Completed: privacy-preserving audit of current UPENN OS mirror vs IDC v25 and explicitly exploratory baseline-only KM/Cox sensitivity analysis; synthetic survival software checks 4/4. Full details: `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026-v2\FINAL-RESEARCH-CLOSEOUT.md`.
+
+Remaining blockers: (1) authoritative field-level definition of `Survival_Censor` (meaning, unit, origin and last-follow-up derivation), uncertain-death handling, and exact reconciliation of published OS denominators 452 vs current candidate 608 / published BrainIAC 668; (2) checkpoint training-subject manifest to assess overlap before independent segmentation validation; (3) authorized image-to-clinical crosswalk before fusion. Until item 1 is resolved, formal KM/Cox and one-year survival evaluation remain blocked; current results are exploratory only.
