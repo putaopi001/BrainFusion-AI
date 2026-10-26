@@ -2,10 +2,13 @@
 
 ## Current engineering delivery — 2026-10-26
 
+- **Engineering freeze source commit:** `748be418fd1cb6bcee73b70e648f9dc904701377` on `codex/research-edition-20261022`; the follow-up freeze note is documentation-only. Existing untracked `data/` is preserved and excluded.
 - The unified isolated demo has a separate DICOM archive route at `/dicom-archive`. It displays Stage7 Orthanc and can revalidate/import only a registered source after an explicit isolated-use acknowledgement, then open a validated MR series through the guarded DICOMweb frame proxy. DICOM Study/Series and NIfTI cases remain separate; conversion and AI submission are unavailable for the current one-series source.
 - A TCIA UCSF-PDGM v5 regularized clinical Cox artifact is available to the isolated research process: ID `ucsf-pdgm-clinical-cox-research`, version `1.0.0`, N=367 IDH-wildtype GBM records, 223 events/144 censored. Five-fold patient-level internal validation only; mean-fold Harrell C-index 0.6373. Protected runtime artifact SHA-256: `9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016`.
 - Earlier live browser/API acceptance passed for DICOM frames and the UCSF artifact. The superseding integration run also displays the fixed-hash sub-002 result. Latest aggregate evidence is `E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo\evidence\final-integration-e2e-20261026-run4.json`.
 - The UCSF model is research-only and not externally or clinically validated. Official TCIA v5 endpoint fields are documented; age-at-MRI can differ from age at initial diagnosis. UPENN endpoint and imaging-fusion blockers remain separate. Formal services/database and their PACS/DICOM/pixel/AI gates were not modified.
+
+The demo launcher is `scripts/start-unified-research-demo.ps1`; press Ctrl+C to stop its isolated web processes. Its disposable `runtime/pacs-readonly/stage7-research.json` (contains archive credentials) and `runtime/local-users.json` (contains a one-run account password hash) remain under the runtime demo directory because the local execution policy rejected their removal. They are not used by the formal containers and are never part of the repository. UPENN formal OS remains `BLOCKED_BY_DATA_DICTIONARY`; the current archive has one MR Series and does not meet four-sequence conversion requirements.
 
 ## Final integration acceptance — 2026-10-26
 
