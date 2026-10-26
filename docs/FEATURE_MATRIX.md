@@ -82,3 +82,13 @@ This snapshot supersedes the older 2026-10-25 snapshot below; those entries are 
 | Formal geometry-fix release | PASS read-only current check | Containers healthy; PACS import/read/DICOM/pixel/AI gates remain disabled. Current DB integrity was not retested in this snapshot; prior release acceptance evidence retained.
 
 See `FINAL-RESEARCH-CLOSEOUT.md` in the versioned runtime evidence directory for exact methods, counts, sources and limitations.
+
+### Official clinical v1.2 survival audit update — 2026-10-26
+
+| Feature | Current status | Evidence / boundary |
+|---|---|---|
+| Clinical v1.2 source and cohort audit | PASS (aggregate only) | 671 rows; 630 people; 611 baseline; 60 follow-up; official-designated CSV byte-identical to pinned mirror; all scan keys and comparable fields agree with IDC v25. No patient rows are in repository. |
+| Candidate OS endpoint | BLOCKED_BY_DATA_DICTIONARY | `Survival_Censor` unit/origin/last-contact rule and updated-time derivation remain undefined; 452/608/668 denominators unreconciled. |
+| KM sensitivity | EXPLORATORY_COMPLETE | N=608 (585 events/23 censored) and N=611 sensitivity (585/26); both median 409 days, 95% CI 376–443. Not validated clinical OS. |
+| Cox | EXPLORATORY, reused | Prior complete-case N=570 result references byte-identical source content; no refit and no individual predictions. |
+| One-year survival prediction | NOT_RUN | Endpoint and censor semantics not validated. |
