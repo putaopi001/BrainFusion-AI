@@ -104,3 +104,11 @@ This current summary supersedes older dated progress snapshots; historical entri
 - Formal OS endpoint: `BLOCKED_BY_DATA_DICTIONARY`; obtain authoritative definitions for `Survival_Censor` meaning/unit/origin/last-contact derivation, the updated event-time rule and uncertain-death handling. Historical 452 vs current candidate 608 vs BrainIAC 668 denominator reconciliation is unresolved; do not force a 452 match.
 - One-year classification: `NOT_RUN`; patient-level risk prediction: `NOT_GENERATED`; imaging-clinical fusion: `BLOCKED` until an authoritative patient crosswalk exists.
 - Overall: `EXPLORATORY_COMPLETE_WITH_ENDPOINT_LIMITATIONS`. No external-validation or clinical-utility claim.
+
+## Survival prediction prototype — 2026-10-26
+
+The software prototype, clinical Cox fit, and final clinical+CaPTk Cox fit are complete; earlier statements that no cohort fit existed describe an earlier audit snapshot and remain historical. The clinical fit uses audited S1 (N=608; 585 candidate events/23 candidate censors), with age, gender, IDH1 and resection. The fusion fit reuses the existing feature-complete cohort N=596 (574/22) and exactly four official CaPTk features; prior CV is reused rather than rerun. Its prior mean fold C-index was clinical 0.6495, CaPTk-only 0.5273, combined 0.6510, so no fusion gain was demonstrated. Both runtime-only artifacts are exploratory and do not validate the endpoint.
+
+Still blocked: authoritative `Survival_Censor` meaning/unit/origin/derivation, exact updated event-time definition, and uncertain-death handling. Formal OS interpretation remains `BLOCKED_BY_DATA_DICTIONARY`. A CaPTk fusion software/model exists, but it is exploratory, showed no demonstrated gain, and is not a BrainFusion-feature model. One-year classification is `NOT_RUN`; no real-patient predictions were generated. RSF is `NOT_IMPLEMENTED` because compatible `sksurv` is unavailable. Prediction API/UI are opt-in and synthetic-only; checked-in defaults are disabled.
+
+See [`SURVIVAL_PREDICTION_CLOSEOUT.md`](SURVIVAL_PREDICTION_CLOSEOUT.md) and the runtime-only model package. No production deployment/configuration changes are part of this implementation.

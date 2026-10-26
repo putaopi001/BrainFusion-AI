@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     DICOM_QUARANTINE_DIR: str = "E:/BrainFusion-Runtime/dicom-quarantine"
     LOCAL_AUTH_FILE: str = "E:/BrainFusion-Runtime/local/local-users.json"
     DICOM_CONVERSION_INDEX_FILE: str = "E:/BrainFusion-Runtime/local/dicom-conversions.json"
+    # Research survival inference is opt-in and disabled in every deployment
+    # unless a separately reviewed model artifact and explicit research-only
+    # runtime configuration are supplied.
+    SURVIVAL_MODEL_DIR: str = ""
+    SURVIVAL_FUSION_MODEL_DIR: str = ""
+    SURVIVAL_RESEARCH_PREDICTION_ENABLED: bool = False
 
     # CORS 允许来源（逗号分隔字符串，部署时通过环境变量覆盖）
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"

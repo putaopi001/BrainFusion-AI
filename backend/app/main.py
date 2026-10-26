@@ -30,6 +30,7 @@ from app.api import analysis
 from app.api import research
 from app.api import pacs
 from app.api import local_auth
+from app.api import survival_prediction
 
 # models（import 以便 create_all 注册表结构）
 from app.models import annotation
@@ -174,6 +175,7 @@ app.include_router(analysis.router)
 app.include_router(research.router)
 app.include_router(pacs.router)
 app.include_router(local_auth.router)
+app.include_router(survival_prediction.router)
 
 @app.on_event("startup")
 def recover_analysis():

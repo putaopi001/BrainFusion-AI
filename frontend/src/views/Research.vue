@@ -7,12 +7,82 @@
       <template #header>生存分析软件状态</template>
       <el-tag type="warning">{{ survivalStatus?.research_status || '读取状态中' }}</el-tag>
       <p>{{ survivalStatus?.reason || '正在读取生存数据条件。' }}</p>
-      <p>KM 与 Cox API 当前仅接收标记为 SYNTHETIC 的工程测试行；未接入或拟合 WAW 患者级生存记录。</p>
+      <p>KM 与 Cox 工程接口仅接收 SYNTHETIC_TEST 数据。研究模型若在隔离环境显式启用，则只用于研究者定义的 UPENN 候选终点；不能用于真实患者或临床决策。</p>
       <el-table v-if="survivalStatus" :data="survivalRows" border>
         <el-table-column prop="name" label="分析能力" />
         <el-table-column prop="status" label="软件状态" />
       </el-table>
-      <el-alert title="当前没有具备共同时间零点和研究用途确认的生存队列；本页不会加载或拟合患者生存记录，也不提供个体生存期。" type="warning" :closable="false" />
+      <el-alert title="官方 OS 字段定义仍未验证。生存模型是研究用途原型，不是临床验证模型；预测接口只接受显式合成测试请求，禁止输入真实患者资料。" type="warning" :closable="false" />
+      <el-divider />
+      <h3>研究 Cox 模型状态</h3>
+      <el-tag :type="survivalModelStatus?.available ? 'warning' : 'info'">{{ survivalModelStatus?.status || '读取状态中' }}</el-tag>
+      <p>{{ survivalModelStatus?.available ? '已从隔离运行时读取研究模型；模型版本和验证状态见所选模型。' : survivalModelStatus?.reason || '正在读取模型注册状态。' }}</p>
+      <el-alert v-if="survivalModelError" :title="survivalModelError" type="error" :closable="false" />
+      <el-alert v-if="survivalFusionUnavailableReason" :title="`融合模型不可用：${survivalFusionUnavailableReason}。需要 ${survivalRadiomicsFeatureNames.join('、')}；BrainFusion 20 项特征不兼容。`" type="info" :closable="false" />
+      <template v-if="survivalModelStatus?.available && survivalModels.length">
+        <label>研究模型
+          <el-select v-model="survivalModelChoice" class="survival-model-select" aria-label="研究模型选择" style="width: 360px">
+            <el-option value="upenn-clinical-cox-research" label="临床 Cox 基线" :disabled="!survivalModelAvailable('upenn-clinical-cox-research')" />
+            <el-option value="upenn-clinical-captk-fusion-cox-research" label="临床 + CaPTk 四特征 Cox" :disabled="!survivalModelAvailable('upenn-clinical-captk-fusion-cox-research')" />
+          </el-select>
+        </label>
+        <p v-if="survivalChosenModel">版本 {{ survivalChosenModel.model_version }} · {{ survivalChosenModel.endpoint_status }} · 五折内部 C-index {{ Number(survivalCvMean(survivalChosenModel)).toFixed(4) }}</p>
+        <p>验证：仅患者级内部五折交叉验证。C-index 是排序指标，不是分类准确率；没有独立外部或临床验证。</p>
+        <el-tag type="warning">研究模型演示仅限 SYNTHETIC_TEST</el-tag>
+        <div class="survival-predict-inputs">
+          <label>合成年龄（年）<el-input-number v-model="survivalAge" :min="18" :max="120" /></label>
+          <el-select v-model="survivalGender" aria-label="合成性别" style="width: 130px">
+            <el-option value="F" label="F（合成）" /><el-option value="M" label="M（合成）" />
+          </el-select>
+          <el-select v-model="survivalIdh" aria-label="合成 IDH1 状态" style="width: 190px">
+            <el-option value="Wildtype" label="Wildtype（合成）" /><el-option value="Mutated" label="Mutated（合成）" />
+            <el-option value="NOS/NEC" label="NOS/NEC（合成）" />
+          </el-select>
+          <el-select v-model="survivalGtr" aria-label="合成切除程度" style="width: 190px">
+            <el-option value="N" label="≤90%（合成）" /><el-option value="Y" label=">90%（合成）" />
+            <el-option value="UNKNOWN" label="UNKNOWN（合成）" />
+          </el-select>
+          <template v-if="survivalModelChoice === 'upenn-clinical-captk-fusion-cox-research'">
+            <p>融合模型只接收以下官方 CaPTk 自动分割强度均值；不会读取或映射 BrainFusion 的 20 项特征。</p>
+            <label>T1GD ET Mean（合成）<el-input-number v-model="survivalRadiomics.T1GD_ET_Intensity_Mean" /></label>
+            <label>FLAIR ED Mean（合成）<el-input-number v-model="survivalRadiomics.FLAIR_ED_Intensity_Mean" /></label>
+            <label>T2 ED Mean（合成）<el-input-number v-model="survivalRadiomics.T2_ED_Intensity_Mean" /></label>
+            <label>T1 NC Mean（合成）<el-input-number v-model="survivalRadiomics.T1_NC_Intensity_Mean" /></label>
+          </template>
+          <el-input v-model="survivalTimes" aria-label="合成生存时间点（天）" placeholder="天数，逗号分隔" style="width: 220px" />
+          <el-button type="primary" :disabled="!survivalCanPredict" :loading="survivalPredictionLoading" @click="predictSyntheticSurvival">运行合成研究示例</el-button>
+        </div>
+        <el-alert v-if="evaluationUser?.role !== 'doctor'" title="需先登录本地 doctor 角色账户；账户角色不代表临床资质。" type="warning" :closable="false" />
+        <el-alert v-if="survivalPredictionError" :title="survivalPredictionError" type="error" :closable="false" />
+        <template v-if="survivalPrediction">
+          <p>输入范围：SYNTHETIC_TEST · 模型 {{ survivalPrediction.model_id }} / {{ survivalPrediction.model_version }} · 时间单位：天</p>
+          <p>相对风险指数：{{ Number(survivalPrediction.relative_risk).toPrecision(5) }}（相对模型基线的 Cox 风险指数，不是患者级风险结论）</p>
+          <figure class="survival-curve-figure">
+            <figcaption>合成请求返回的研究生存曲线</figcaption>
+            <svg viewBox="0 0 480 190" role="img" aria-label="合成生存曲线">
+              <line x1="42" y1="20" x2="42" y2="160" class="survival-axis" />
+              <line x1="42" y1="160" x2="460" y2="160" class="survival-axis" />
+              <text x="4" y="25">100%</text><text x="12" y="94">50%</text><text x="23" y="164">0%</text>
+              <polyline :points="survivalChartPoints" class="survival-curve-line" />
+              <circle v-for="(point, index) in survivalPrediction.survival_curve" :key="`${point.time}-${index}`"
+                :cx="survivalChartCoordinate(point, index).x" :cy="survivalChartCoordinate(point, index).y" r="4" class="survival-curve-point">
+                <title>{{ point.time }} 天：{{ (point.survival_probability * 100).toFixed(1) }}%</title>
+              </circle>
+              <text x="42" y="184">{{ survivalPrediction.survival_curve[0]?.time }} 天</text>
+              <text x="365" y="184">{{ survivalPrediction.survival_curve.at(-1)?.time }} 天</text>
+            </svg>
+          </figure>
+          <el-table :data="survivalPrediction.survival_curve" border>
+            <el-table-column label="时间点">
+              <template #default="scope">{{ Number(scope.row.time / 365).toFixed(0) }} 年（{{ scope.row.time }} 天）</template>
+            </el-table-column>
+            <el-table-column label="研究者定义终点下的模型生存概率">
+              <template #default="scope">{{ (scope.row.survival_probability * 100).toFixed(1) }}%</template>
+            </el-table-column>
+          </el-table>
+          <el-alert title="这是由研究者定义、未验证 OS 终点计算的合成输入演示，不代表真实患者预测；结果未保存。" type="warning" :closable="false" />
+        </template>
+      </template>
     </el-card>
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="panel" />
     <template v-if="summary">
@@ -146,7 +216,13 @@ import request from '../api/axios'
 import { useRoute } from 'vue-router'
 const route = useRoute()
 const summary = ref(null), patient = ref(null), clinical = ref(null), error = ref(''), selected = ref('13')
-const survivalStatus = ref(null)
+const survivalStatus = ref(null), survivalModelStatus = ref(null), survivalModels = ref([])
+const survivalModelUnavailable = ref({})
+const survivalAge = ref(63), survivalGender = ref('F'), survivalIdh = ref('Wildtype'), survivalGtr = ref('N')
+const survivalModelChoice = ref('upenn-clinical-cox-research')
+const survivalRadiomics = ref({ T1GD_ET_Intensity_Mean: 1, FLAIR_ED_Intensity_Mean: 2, T2_ED_Intensity_Mean: 3, T1_NC_Intensity_Mean: 4 })
+const survivalTimes = ref('365,730,1095'), survivalPrediction = ref(null), survivalPredictionLoading = ref(false)
+const survivalPredictionError = ref(''), survivalModelError = ref('')
 const age = ref(50), female = ref(false), patientLoading = ref(false), clinicalLoading = ref(false)
 const cases = ref([]), featureCase = ref(null), featureJob = ref(null), featureSubmitting = ref(false), featureExporting = ref(false)
 const caseClinical = ref(null), caseAge = ref(null), caseFemale = ref(null), clinicalSaving = ref(false)
@@ -174,6 +250,32 @@ const survivalRows = computed(() => Object.entries(survivalStatus.value?.softwar
   name: ({ endpoint_validation: '终点契约校验', kaplan_meier: 'Kaplan–Meier', cox_ph: 'Cox PH', random_survival_forest: 'Random Survival Forest' })[key] || key,
   status: status === 'available' ? '可用' : status === 'not_available' ? '未安装/不可用' : '需通过数据契约'
 })))
+const survivalCanPredict = computed(() => Boolean(survivalModelStatus.value?.available
+  && survivalModelAvailable(survivalModelChoice.value)
+  && evaluationUser.value?.role === 'doctor' && evaluationCsrf.value
+  && Number.isFinite(Number(survivalAge.value))
+  && (survivalModelChoice.value !== 'upenn-clinical-captk-fusion-cox-research'
+    || Object.values(survivalRadiomics.value).every(value => Number.isFinite(Number(value))))
+  && survivalTimes.value.split(',').every(value => Number.isFinite(Number(value.trim())) && Number(value.trim()) > 0)))
+const survivalChosenModel = computed(() => survivalModels.value.find(model => model.model_id === survivalModelChoice.value) || null)
+const survivalFusionUnavailableReason = computed(() => survivalModelAvailable('upenn-clinical-captk-fusion-cox-research')
+  ? '' : survivalModelUnavailable.value['upenn-clinical-captk-fusion-cox-research'] || '独立融合工件未配置')
+const survivalRadiomicsFeatureNames = ['T1GD_ET_Intensity_Mean', 'FLAIR_ED_Intensity_Mean', 'T2_ED_Intensity_Mean', 'T1_NC_Intensity_Mean']
+function survivalModelAvailable(modelId) { return survivalModels.value.some(model => model.model_id === modelId) }
+function survivalCvMean(model) {
+  return model?.validation?.mean_fold_harrell_c_index ?? model?.validation?.fusion_mean_fold_c_index ?? NaN
+}
+function survivalChartCoordinate(point) {
+  const curve = survivalPrediction.value?.survival_curve || []
+  const first = Number(curve[0]?.time || 0), last = Number(curve.at(-1)?.time || first)
+  const x = last > first ? 42 + ((Number(point.time) - first) / (last - first)) * 418 : 251
+  return { x, y: 20 + (1 - Number(point.survival_probability)) * 140 }
+}
+const survivalChartPoints = computed(() => (survivalPrediction.value?.survival_curve || [])
+  .map(point => {
+    const coordinate = survivalChartCoordinate(point)
+    return `${coordinate.x},${coordinate.y}`
+  }).join(' '))
 const evaluationRows = computed(() => Object.entries(evaluation.value?.record?.regions || {}).map(([region, row]) => ({
   region, dice: row.dice ?? '不可用', hd95: row.hd95_mm ?? '不可用',
   hd95Reason: row.hd95_status === 'available' ? '可计算' : row.hd95_reason || 'NOT_AVAILABLE',
@@ -188,6 +290,51 @@ async function loadPatient() {
 async function predictClinical() {
   clinicalLoading.value = true; clinical.value = null; error.value = ''
   try { clinical.value = (await request.post('/research/clinical', { age: age.value, female: female.value })).data.data } catch (e) { failure(e) } finally { clinicalLoading.value = false }
+}
+async function loadSurvivalModelStatus() {
+  try {
+    const [statusResponse, modelsResponse] = await Promise.all([
+      request.get('/api/survival/status'), request.get('/api/survival/models'),
+    ])
+    survivalModelStatus.value = statusResponse.data.data
+    survivalModels.value = modelsResponse.data.data.models || []
+    survivalModelUnavailable.value = modelsResponse.data.data.unavailable_models || {}
+    if (!survivalModelAvailable(survivalModelChoice.value) && survivalModels.value.length) {
+      survivalModelChoice.value = survivalModels.value[0].model_id
+    }
+    survivalModelError.value = ''
+  } catch (e) {
+    survivalModelStatus.value = { available: false, status: 'NOT_AVAILABLE' }
+    survivalModels.value = []
+    survivalModelError.value = String(e.response?.data?.detail || e.message)
+  }
+}
+async function predictSyntheticSurvival() {
+  if (!survivalCanPredict.value) return
+  survivalPredictionLoading.value = true
+  survivalPredictionError.value = ''
+  survivalPrediction.value = null
+  const times = survivalTimes.value.split(',').map(value => Number(value.trim()))
+  if (times.some((value, index) => index > 0 && value < times[index - 1])) {
+    survivalPredictionError.value = '时间点请按天数从小到大填写。'
+    survivalPredictionLoading.value = false
+    return
+  }
+  try {
+    const response = await request.post('/api/survival/predict', {
+      declared_use_scope: 'SYNTHETIC_TEST',
+      model_id: survivalModelChoice.value,
+      clinical: { age_years: Number(survivalAge.value), gender: survivalGender.value,
+        IDH1: survivalIdh.value, GTR_over90percent: survivalGtr.value },
+      ...(survivalModelChoice.value === 'upenn-clinical-captk-fusion-cox-research'
+        ? { radiomics: Object.fromEntries(Object.entries(survivalRadiomics.value).map(([name, value]) => [name, Number(value)])) }
+        : {}),
+      requested_times_days: times,
+    }, { headers: { 'X-BF-CSRF': evaluationCsrf.value } })
+    survivalPrediction.value = response.data.data
+  } catch (e) {
+    survivalPredictionError.value = String(e.response?.data?.detail || e.message)
+  } finally { survivalPredictionLoading.value = false }
 }
 function scheduleFeatures() {
   clearTimeout(featureTimer)
@@ -358,6 +505,7 @@ async function exportEvaluation() {
 }
 onMounted(async () => {
   request.get('/research/survival/status').then(response => { survivalStatus.value = response.data.data }).catch(failure)
+  await loadSurvivalModelStatus()
   await loadEvaluationSession()
   try {
     summary.value = (await request.get('/research/summary')).data.data
@@ -371,4 +519,7 @@ onUnmounted(() => { mounted = false; ++featureGeneration; clearTimeout(featureTi
 </script>
 <style scoped>
 .research-page { padding: 24px; max-width: 1100px; margin: auto; } .panel { margin-top: 18px; } label { margin-right: 12px; }
+.survival-curve-figure { max-width: 560px; margin: 16px 0; } .survival-curve-figure svg { width: 100%; overflow: visible; }
+.survival-curve-figure text { fill: currentColor; font-size: 10px; } .survival-axis { stroke: #87909c; stroke-width: 1; }
+.survival-curve-line { fill: none; stroke: #2775cf; stroke-width: 3; } .survival-curve-point { fill: #2775cf; }
 </style>
