@@ -2,6 +2,8 @@
 
 ## 2026-10-26 final research blockers
 
+This is the latest state; older dated sections below are retained as historical records.
+
 Completed in the latest science pass:
 
 - Public reference source and local label histogram were checked. A valid **WT-only** sub-002 agreement was calculated without integer relabeling; it was independently cross-checked against the existing backend metric function. Results and script are under `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026\`.

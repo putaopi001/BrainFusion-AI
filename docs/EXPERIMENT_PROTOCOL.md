@@ -2,6 +2,8 @@
 
 ## P0/P2 evidence update — 2026-10-26
 
+This update supersedes stale execution-status notes in older sections below; the study safeguards remain applicable.
+
 ### Single-case public-reference agreement (exploratory)
 
 - Case: official co-registered UPENN `sub-002`; use existing SegResNet output only (no new inference).
