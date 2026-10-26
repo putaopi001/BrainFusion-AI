@@ -64,6 +64,7 @@ Use `GET /api/survival/status` and `GET /api/survival/models` before synthetic t
 - UI/API contract: one Playwright Microsoft Edge test with explicit synthetic API fixtures selected both models: **1 passed**. Initial default Chromium launch could not start because the local Chromium executable was absent; no browser was downloaded or installed.
 - Frontend: `npm run build`: **passed**; existing Node-core externalization and large-chunk warnings remain.
 - Actual artifacts/API: both runtime artifacts loaded through FastAPI with synthetic covariates; clinical and fusion calls returned 365/730/1095-day curves; incompatible BrainFusion feature keys returned 422. No patient was used for inference and no output persisted.
+- Live artifact-to-Vue E2E: `frontend/e2e/survival-live-artifact.spec.js` is opt-in and is launched by `frontend/e2e/run-survival-live-artifact.ps1`. The runner verifies the expected artifact hashes, starts FastAPI and Vite on free loopback ports with a new temporary SQLite and synthetic doctor account, and removes its temporary database/account after the run. The Edge test uses the real `/api/survival/status`, `/models`, `/predict`, and local login/CSRF flow; only unrelated legacy research summary/patient panels are synthetic fixtures. Both actual models rendered their returned curves; missing CaPTk input, unsupported IDH1 category, and descending times were rejected; the isolated prediction table remained empty. Latest run evidence: `E:\BrainFusion-Runtime\research-edition\results\survival-live-artifact-e2e-20261026\run-20261026T181052-1af8d93e`.
 - Not run: complete backend suite, live production browser/API integration, production container tests, one-year classification, external validation, SegResNet, or any model/production deployment.
 
 ## Remaining external work
@@ -87,3 +88,5 @@ Run from `E:\BrainFusion-AI\backend` with the existing BrainFusion Conda interpr
 ```
 
 After fitting, configure `SURVIVAL_MODEL_DIR`, `SURVIVAL_FUSION_MODEL_DIR`, and `SURVIVAL_RESEARCH_PREDICTION_ENABLED=true` only in an isolated research process. Checked-in and formal deployment defaults remain disabled. Exercise `/api/survival/predict` only with synthetic fixture values and `declared_use_scope: "SYNTHETIC_TEST"`.
+
+To repeat the full real-artifact UI/API integration from PowerShell, run `& .\e2e\run-survival-live-artifact.ps1` from `E:\BrainFusion-AI\frontend`. The runner refuses model-hash mismatches, chooses free non-production ports, verifies the isolated DB has zero prediction rows, and saves each run under the versioned runtime evidence directory above.
