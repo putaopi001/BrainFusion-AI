@@ -1,5 +1,21 @@
 # 剩余工作与放行条件
 
+## 2026-10-26 final research blockers
+
+Completed in the latest science pass:
+
+- Public reference source and local label histogram were checked. A valid **WT-only** sub-002 agreement was calculated without integer relabeling; it was independently cross-checked against the existing backend metric function. Results and script are under `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026\`.
+- IDC v25 baseline/follow-up cohort structure, status, candidate event/censor availability and covariate missingness were audited without emitting patient identifiers. No KM/Cox was fitted.
+- Existing geometry-fix production release evidence remains verified; this pass did not deploy or alter production.
+
+Remaining external evidence needed:
+
+1. **TC/ET and expert-reference classification:** obtain an official per-file integer label dictionary/conversion statement for the exact `sub-002_seg.nii.gz`, plus a subject-level indicator for whether sub-002 is among the 232 manually reviewed/refined masks. Do not infer class mapping from overlap with the model. Training-subject overlap information is separately needed before an independent-validation claim.
+2. **Validated clinical OS:** obtain publisher/TCIA confirmation of `Survival_from_surgery_days_UPDATED` event-time unit/definition and `Survival_Censor` meaning, unit and start/last-contact rules; explain treatment of 3 uncertain-date deaths; obtain a cohort-flow reconciliation for paper N=452 vs the updated candidate N=608. The official v1.2 attachment timed out on one bounded download attempt and was not saved. Until definitions are validated, keep KM/Cox `NOT_RUN` and candidate records `PROVISIONAL`.
+3. **Imaging-clinical fusion:** acquire an authoritative sub-002↔DICOM PatientID mapping; no ordinal join. This does not block a future clinical-only model once OS endpoint conditions and analysis approval are met.
+
+Potential preregistered sensitivity scenarios after endpoint verification: primary confirmed status/time mapping; exclude uncertain-death cases; and, only if the source defines last-contact censor time, include the three uncertain cases censored at that time. Freeze age/sex/IDH/resection as a sparse clinical baseline; MGMT/KPS require missing-data planning (only 53 candidate complete cases when both are required).
+
 更新：2026-10-25（授权后收尾）。以下表格中的早期“等待批准”描述保留作历史记录；最新状态以本节为准。
 
 ## 当前剩余事项

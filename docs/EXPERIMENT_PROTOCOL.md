@@ -1,5 +1,21 @@
 # 实验协议（实施前冻结）
 
+## P0/P2 evidence update — 2026-10-26
+
+### Single-case public-reference agreement (exploratory)
+
+- Case: official co-registered UPENN `sub-002`; use existing SegResNet output only (no new inference).
+- Freeze prediction, reference and T1c hashes; compare only when NIfTI shape/affine agree, with no implicit array-index comparison across grids.
+- Current files share 240×240×155 and 1 mm geometry. Observed integer labels are 0/1/2/3 in both. The project prediction codec is confirmed in source as labels 1=TC, 2=WT-only, 3=ET; BraTS 2018 source encoding is 1/2/4. The official UPENN material currently available does not document the released mask’s per-file numeric map/conversion. Therefore WT is computed as nonzero-union; TC and ET reference metrics are withheld.
+- Result class: `PUBLIC_REFERENCE_AGREEMENT`, WT only. The cohort article describes automated label fusion; it reports a 232-subject manual-review/refinement subset but does not identify whether sub-002 is included. Do not use `EXPERT_REVIEWED_REFERENCE_AGREEMENT`. Training-set overlap is unknown and one subject cannot establish external validation.
+- Exact metrics, hashes, method and overlays are recorded in `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026\`.
+
+### IDC v25 clinical OS admission gate
+
+- Structural cohort audit: 611 unique baseline `_11` patients; 60 `_21` follow-up rows, 41 paired and 19 follow-up-only. Candidate rule yields 585 event-like values and 23 censor-like values; three uncertain-date deaths carry numeric censor values but remain unresolved. Candidate N=608 is descriptive only.
+- The 2022 cohort paper reports OS for 452 and says survival information is from first surgery. TCIA reports a 2023-12-05 clinical v1.2 update adding censor/survival information. IDC v25 schema exposes column names but not exact censor semantics or time unit; the original v1.2 CSV could not be retrieved in one bounded request. No numeric KM/Cox is released until these definitions and 452-vs-608 cohort flow are reconciled.
+- After authoritative endpoint confirmation and a frozen analysis plan: use baseline `_11` once per patient; prespecify the uncertain-death rule; report KM risk sets/CI and censor marks; fit a parsimonious Cox model with age/sex and only variables supported by completeness/events; report HR/95% CI, PH diagnostics, patient-level bootstrap uncertainty and C-index. Do not offer patient-level clinical predictions. No imaging crosswalk is needed for clinical-only modeling; imaging fusion requires a separate authoritative crosswalk.
+
 版本：草案 0.1，2026-10-03。研究假设均待验证，不能预先声称 TOPSIS 有提升。终点、队列和权重来源确定后填写配置并冻结。
 
 ## 研究增强版工程验证补充（2026-10-22）

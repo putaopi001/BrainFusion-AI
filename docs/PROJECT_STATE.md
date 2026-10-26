@@ -1,5 +1,13 @@
 # Project execution state
 
+## Final science closeout — 2026-10-26
+
+- **P0 public-reference agreement: PASS for WT only.** Reused the single existing sub-002 CUDA prediction; prediction/reference SHA, shape (240×240×155), 1 mm affine and T1c grid were checked. `label != 0` is unambiguous for whole tumor, so WT Dice=0.759799, HD95=20.074860 mm, precision=0.953595, recall=0.631468, volumes 140.221/211.751 ml (prediction/reference), TP/FP/FN=133714/6507/78037. Existing backend metric implementation independently reproduced these values. TC/ET were not calculated: local reference labels are 0/1/2/3, while BraTS standard is 0/1/2/4; current official UPENN sources do not provide a per-file integer mapping or conversion record.
+- **Reference status:** public cohort reference, not proven expert-reviewed for sub-002. The cohort paper reports automated label fusion and a 232-subject manual review/refinement subset but no subject-level list. **Independent external validation is not established** because SegResNet training overlap is unknown and this is one case. The executed sliding ROI also differs from bundle default; see original run evidence.
+- **P2 candidate clinical audit: PASS at aggregate level; OS endpoint validation BLOCKED.** IDC v25 has 671 scan rows/630 DICOM IDs; baseline is 611 unique patients and follow-up 60 (41 paired, 19 follow-up-only). Candidate mapping gives 608 records (585 events, 23 censored) excluding 3 uncertain-death records, but the IDC schema does not define `Survival_Censor` semantics/unit or confirm field-level lineage to the paper’s first-surgery origin. The paper reports 452 OS records. TCIA’s 2023 v1.2 update note says censor/survival information was added, but no count or row-level reconciliation is available. KM/Cox were not fitted; no individual predictions were produced. Clinical-only analysis does not require an imaging crosswalk; imaging fusion remains separately blocked on a verified crosswalk.
+- **Formal release remains VERIFIED from the 2026-10-25 acceptance record.** This turn performed no deployment, inference, formal database, or security-gate change. Formal PACS/DICOM/pixel/AI gates remain closed in the acceptance evidence.
+- Evidence: `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026\P0-P2-final-science-evidence.md`, JSON/CSV/image and reproducibility scripts. The public-label file and clinical row data remain outside Git.
+
 ## Current verified state — 2026-10-25 (authorization follow-up)
 
 This snapshot supersedes earlier dated statements below where they say UPENN inference or geometry-fix production release was still awaiting approval. Those statements remain as historical records.

@@ -1,5 +1,13 @@
 # BrainFusion-AI 功能矩阵
 
+## 2026-10-26 P0/P2 final research status
+
+- **SegResNet:** one approved isolated sub-002 CUDA inference remains the only run; no rerun. Public-reference **WT-only agreement PASS**: Dice 0.759799, HD95 20.074860 mm, precision 0.953595, recall 0.631468; prediction/reference volumes 140.221/211.751 ml. Same-grid and existing backend metric cross-check passed. This is a single-case agreement, not an external performance estimate.
+- **TC/ET reference metrics:** `NOT_RUN`; public mask values are 0/1/2/3 but authoritative per-file class mapping/conversion from BraTS 0/1/2/4 is unavailable. Expert-reviewed status for sub-002 is unverified; training-set overlap is unknown.
+- **UPENN clinical OS:** patient-level structural audit passed (611 baseline, 60 follow-up; 41 paired and 19 follow-up-only). A 608-row event/censor candidate is `PROVISIONAL` only. The endpoint is not validated, because v25 lacks authoritative censor semantics/time unit and the 452-vs-608 version difference is unreconciled. Real KM/Cox are `NOT_RUN`; synthetic software status remains separately passed. No patient risk estimate was generated.
+- **Formal release:** geometry-fix release `VERIFIED` by 2026-10-25 acceptance evidence. Not redeployed or re-tested in this science-only pass.
+- Reproducibility evidence and hashes: `E:\BrainFusion-Runtime\research-edition\results\p0-p2-final-science-20261026\`.
+
 更新：2026-10-25（最终冲刺授权后复核）。下方较早条目保留历史；如与“2026-10-25 当前核验快照”冲突，以该快照和对应运行证据为准。
 
 ## 2026-10-25 当前核验快照
