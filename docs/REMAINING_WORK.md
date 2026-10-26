@@ -73,3 +73,14 @@ Remaining blockers: (1) authoritative field-level definition of `Survival_Censor
 The official-designated CSV is now locally available and matches the pinned mirror byte-for-byte (SHA-256 `fd5749ae5a8d77e599e02264d961d94107752f0244e34bf0bc711a75fe0e2ec5`); its 671 scan rows and 11 comparable fields match IDC v25. This resolves the source-content comparison, not the data dictionary. The endpoint remains `BLOCKED_BY_DATA_DICTIONARY`: no authoritative definition was found for `Survival_Censor` unit/origin/last-contact rule, exact updated-time derivation, or the three uncertain deaths; published 452 vs 608/668 denominators remain unreconciled.
 
 Exploratory KM sensitivity was completed on baseline-only candidates: N=608 (585/23 event/censor) and N=611 (585/26 when uncertain-death records are provisionally censored), both median 409 days (95% CI 376–443). The prior Cox fit on byte-identical input is retained as exploratory, not refit. One-year prediction remains NOT_RUN. Obtain written TCIA/UPENN field clarification and inclusion criteria before formal survival analysis. Evidence: `official-survival-audit-20261026-v1`.
+
+## Latest survival status and sole endpoint blocker — 2026-10-26
+
+This current summary supersedes older dated progress snapshots; historical entries are retained as records of prior state.
+
+- Official CSV integrity/cohort reconstruction: `PASS`.
+- Exploratory KM: `EXPLORATORY_COMPLETE`, N=608 (585 candidate events/23 candidate censored) and N=611 sensitivity (585/26), median 409 days for both (95% CI 376–443).
+- Cox: `EXPLORATORY_RESULT_REUSED_NOT_REFIT`, complete-case N=570, 551 candidate events/19 censored, five-fold patient-level CV C-index ≈0.634. No refit; age PH diagnostic is a trend screen only.
+- Formal OS endpoint: `BLOCKED_BY_DATA_DICTIONARY`; obtain authoritative definitions for `Survival_Censor` meaning/unit/origin/last-contact derivation, the updated event-time rule and uncertain-death handling. Historical 452 vs current candidate 608 vs BrainIAC 668 denominator reconciliation is unresolved; do not force a 452 match.
+- One-year classification: `NOT_RUN`; patient-level risk prediction: `NOT_GENERATED`; imaging-clinical fusion: `BLOCKED` until an authoritative patient crosswalk exists.
+- Overall: `EXPLORATORY_COMPLETE_WITH_ENDPOINT_LIMITATIONS`. No external-validation or clinical-utility claim.

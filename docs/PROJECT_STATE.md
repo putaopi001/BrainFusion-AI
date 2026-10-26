@@ -148,3 +148,14 @@ Current formal geometry-fix containers were read-only checked as running/healthy
 The protected official-release `.part` file was validated: 671 records, 630 normalized people, 611 baseline `_11`, 60 follow-up `_21`, and 41 paired records. Its SHA-256 is `fd5749ae5a8d77e599e02264d961d94107752f0244e34bf0bc711a75fe0e2ec5`; the file is byte-identical to the pinned mirror and all 671 scan IDs/11 comparable fields match IDC v25. This proves content consistency, not endpoint definitions.
 
 The baseline status distribution is 585 deceased, 6 lost to follow-up, 17 alive, and 3 uncertain-date deaths. Candidate KM scenarios remain `EXPLORATORY`: N=608 (585 event-like, 23 censored; median 409 days, 95% interval 376–443) and sensitivity N=611 including the 3 uncertain cases as censored (same median/interval). `Survival_Censor` unit, origin, and last-contact derivation remain undocumented; therefore `OS_ENDPOINT_VALIDATED=false`, formal clinical KM/Cox and one-year prediction are not supported. Existing Cox output was reused without refit because input bytes match exactly. Aggregate-only artifacts: `official-survival-audit-20261026-v1`.
+
+## Latest unified survival status — 2026-10-26
+
+This is the current status for official v1.2 survival work and supersedes older timestamped status summaries; those entries remain historical.
+
+- Official clinical CSV integrity and aggregate cohort reconstruction: `PASS` (671 records, 630 people, 611 baseline, 60 follow-up, 41 paired).
+- Exploratory KM: `EXPLORATORY_COMPLETE`; N=608 (585 candidate events, 23 candidate censored), sensitivity N=611 (585/26); both median 409 days, 95% CI 376–443.
+- Cox: `EXPLORATORY_RESULT_REUSED_NOT_REFIT`; complete-case N=570 (551 candidate events, 19 censored), five-fold patient-level CV C-index ≈0.634. No refit in this audit.
+- Formal OS endpoint: `BLOCKED_BY_DATA_DICTIONARY`. Censor field semantics/time rules and updated event-time derivation are not authoritative.
+- One-year classification: `NOT_RUN`. Patient-level risk prediction: `NOT_GENERATED`. Imaging-clinical fusion: `BLOCKED` pending authoritative crosswalk.
+- Overall research status: `EXPLORATORY_COMPLETE_WITH_ENDPOINT_LIMITATIONS`. No clinical-validity or independent external-validation claim. C-index is not classification accuracy; the age PH check is only a trend screen.

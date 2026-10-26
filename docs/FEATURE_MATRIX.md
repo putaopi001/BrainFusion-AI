@@ -83,12 +83,19 @@ This snapshot supersedes the older 2026-10-25 snapshot below; those entries are 
 
 See `FINAL-RESEARCH-CLOSEOUT.md` in the versioned runtime evidence directory for exact methods, counts, sources and limitations.
 
-### Official clinical v1.2 survival audit update — 2026-10-26
+### Latest official v1.2 survival status — 2026-10-26
+
+This status supersedes earlier dated progress snapshots; those remain historical.
 
 | Feature | Current status | Evidence / boundary |
 |---|---|---|
-| Clinical v1.2 source and cohort audit | PASS (aggregate only) | 671 rows; 630 people; 611 baseline; 60 follow-up; official-designated CSV byte-identical to pinned mirror; all scan keys and comparable fields agree with IDC v25. No patient rows are in repository. |
-| Candidate OS endpoint | BLOCKED_BY_DATA_DICTIONARY | `Survival_Censor` unit/origin/last-contact rule and updated-time derivation remain undefined; 452/608/668 denominators unreconciled. |
-| KM sensitivity | EXPLORATORY_COMPLETE | N=608 (585 events/23 censored) and N=611 sensitivity (585/26); both median 409 days, 95% CI 376–443. Not validated clinical OS. |
-| Cox | EXPLORATORY, reused | Prior complete-case N=570 result references byte-identical source content; no refit and no individual predictions. |
-| One-year survival prediction | NOT_RUN | Endpoint and censor semantics not validated. |
+| Official clinical CSV integrity and aggregate cohort reconstruction | `PASS` | 671 records; 630 people; 611 baseline; 60 follow-up; 41 paired; official-designated CSV SHA and IDC v25 comparison verified. |
+| Exploratory KM | `EXPLORATORY_COMPLETE` | N=608 (585 candidate events/23 candidate censored) and sensitivity N=611 (585/26); both median 409 days (95% CI 376–443). |
+| Cox | `EXPLORATORY_RESULT_REUSED_NOT_REFIT` | Complete-case N=570 (551 candidate events/19 censored); five-fold patient-level CV C-index ≈0.634. Prior result reused, not refit. |
+| Formal OS endpoint | `BLOCKED_BY_DATA_DICTIONARY` | Censor semantics/time rules and exact updated event-time derivation remain unresolved. |
+| One-year survival classification | `NOT_RUN` | Endpoint not validated. |
+| Patient-level risk prediction | `NOT_GENERATED` | No patient-specific predictions. |
+| Imaging-clinical fusion | `BLOCKED` | Authoritative patient crosswalk unavailable. |
+| Overall research status | `EXPLORATORY_COMPLETE_WITH_ENDPOINT_LIMITATIONS` | Exploratory association only; no clinical or independent external validation claim. |
+
+C-index is not classification accuracy. The age Schoenfeld result is a trend screen, not a formal PH test. No cases were removed to force a match to the paper’s 452-patient denominator. Evidence: `official-survival-audit-20261026-v1`.
