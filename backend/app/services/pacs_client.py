@@ -87,7 +87,18 @@ def load_config():
             fail('unconfigured', '本地 PACS 尚未配置，DICOM 归档与阅片尚不可用。')
         if path.stat().st_size > 16384:
             fail('invalid_config', '本地 PACS 配置无效，请检查服务端配置。')
-        return PacsConfig.model_validate_json(path.read_text(encoding='utf-8-sig'))
+        config = PacsConfig.model_validate_json(path.read_text(encoding='utf-8-sig'))
+        if settings.PACS_RESEARCH_DEMO_PIXEL_READ:
+            # Narrow, opt-in pixel access for the authorized Stage7 research archive.
+            origin = urlsplit(config.base_url)
+            if (settings.PROJECT_NAME != 'BrainFusion-AI Isolated Research Demo'
+                    or path.parent.name != 'pacs-readonly' or path.name != 'stage7-research.json'
+                    or config.archive_id != 'stage7-orthanc'
+                    or origin.hostname != '127.0.0.1' or origin.port != 18142
+                    or not config.expected_database_server_identifier):
+                fail('invalid_config', '研究阅片配置未匹配到固定的 Stage7 隔离归档。')
+            config = config.model_copy(update={'allow_pixel_read': True})
+        return config
     except HTTPException:
         raise
     except Exception:

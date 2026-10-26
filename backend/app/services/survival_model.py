@@ -21,6 +21,7 @@ ARTIFACT_SCHEMA_VERSION = 1
 EXPECTED_MODEL_TYPE = "CoxPH"
 CLINICAL_MODEL_ID = "upenn-clinical-cox-research"
 FUSION_MODEL_ID = "upenn-clinical-captk-fusion-cox-research"
+UCSF_MODEL_ID = "ucsf-pdgm-clinical-cox-research"
 
 
 class SurvivalModelError(ValueError):
@@ -55,6 +56,8 @@ def model_directory(model_id: str = CLINICAL_MODEL_ID) -> Path | None:
         configured = str(settings.SURVIVAL_MODEL_DIR or "").strip()
     elif model_id == FUSION_MODEL_ID:
         configured = str(settings.SURVIVAL_FUSION_MODEL_DIR or "").strip()
+    elif model_id == UCSF_MODEL_ID:
+        configured = str(settings.SURVIVAL_UCSF_MODEL_DIR or "").strip()
     else:
         return None
     if not configured or not settings.SURVIVAL_RESEARCH_PREDICTION_ENABLED:
@@ -98,10 +101,15 @@ def _validate_model(model: Mapping[str, Any]) -> None:
         raise SurvivalModelError("Unsupported Cox model schema version.")
     if model.get("model_type") != EXPECTED_MODEL_TYPE or model.get("research_only") is not True:
         raise SurvivalModelError("Model is not explicitly marked RESEARCH_ONLY.")
-    if model.get("endpoint", {}).get("official_endpoint_validated") is not False:
+    endpoint = model.get("endpoint", {})
+    if model.get("model_id") == UCSF_MODEL_ID:
+        if (endpoint.get("official_endpoint_validated") is not True
+                or endpoint.get("status") != "OFFICIAL_DATASET_ENDPOINT_DOCUMENTED"
+                or model.get("dataset", {}).get("id") != "UCSF-PDGM"
+                or model.get("dataset", {}).get("version") != "TCIA Version 5 (2025-05-30)"):
+            raise SurvivalModelError("UCSF model dataset or official endpoint contract is inconsistent.")
+    elif endpoint.get("official_endpoint_validated") is not False or endpoint.get("status") != "RESEARCHER_DEFINED_ENDPOINT_WITH_LIMITATIONS":
         raise SurvivalModelError("Researcher-defined endpoint status is missing or inconsistent.")
-    if model.get("endpoint", {}).get("status") != "RESEARCHER_DEFINED_ENDPOINT_WITH_LIMITATIONS":
-        raise SurvivalModelError("Unsupported survival endpoint status.")
     if model.get("endpoint", {}).get("time_unit") != "days":
         raise SurvivalModelError("Only the model's audited day-based time unit is supported.")
     if not all(isinstance(model.get(key), str) and model[key].strip()
@@ -124,12 +132,25 @@ def _validate_model(model: Mapping[str, Any]) -> None:
     if not np.isfinite(numeric).all() or np.any(numeric[1] <= 0):
         raise SurvivalModelError("Model preprocessing parameters are non-finite or degenerate.")
     radiomics = features.get("radiomics")
-    expected_clinical = {"age_years", "gender_M", "IDH1_mutated", "IDH1_NOS_NEC",
+    if model.get("model_id") == UCSF_MODEL_ID:
+        if (names != ["age_at_mri_years", "sex_M"]
+                or features.get("input_schema") != {
+                    "inputs": ["age_years", "sex"], "sex_categories": ["F", "M"],
+                    "encoding": {"sex_M": "1 for M, 0 for F"}}):
+            raise SurvivalModelError("UCSF feature schema is incompatible with this runtime.")
+        if not isinstance(features.get("training_ranges", {}).get("age_years"), list):
+            raise SurvivalModelError("UCSF model age input range is missing.")
+        if features.get("radiomics") is not None:
+            raise SurvivalModelError("UCSF clinical model cannot accept radiomics features.")
+        radiomics = None
+        expected_features = {"age_at_mri_years", "sex_M"}
+    else:
+        expected_clinical = {"age_years", "gender_M", "IDH1_mutated", "IDH1_NOS_NEC",
                          "GTR_over90pct_Y", "GTR_unknown"}
-    expected_fusion = {"age_years", "gender_M", "IDH1_mutated", "IDH1_NOS_NEC",
+        expected_fusion = {"age_years", "gender_M", "IDH1_mutated", "IDH1_NOS_NEC",
                        "GTR_over_90pct", "T1GD_ET_Intensity_Mean", "FLAIR_ED_Intensity_Mean",
                        "T2_ED_Intensity_Mean", "T1_NC_Intensity_Mean"}
-    expected_features = expected_fusion if isinstance(radiomics, dict) else expected_clinical
+        expected_features = expected_fusion if isinstance(radiomics, dict) else expected_clinical
     if set(names) != expected_features or len(names) != len(expected_features):
         raise SurvivalModelError("Model feature names do not match the registered clinical/fusion schema.")
     if isinstance(radiomics, dict):
@@ -175,6 +196,26 @@ def _validate_model(model: Mapping[str, Any]) -> None:
 def encode_clinical_inputs(payload: Mapping[str, Any], model: Mapping[str, Any],
                            radiomics: Mapping[str, Any] | None = None) -> np.ndarray:
     """Encode the fixed clinical categories; no implicit feature-name remap."""
+    if model.get("model_id") == UCSF_MODEL_ID:
+        schema = model.get("features", {}).get("input_schema", {})
+        if set(payload) != set(schema.get("inputs", [])):
+            raise SurvivalModelError("UCSF input must contain exactly age_years and sex.")
+        try:
+            age = float(payload["age_years"])
+        except (TypeError, ValueError) as error:
+            raise SurvivalModelError("Age must be a finite numeric value in years.") from error
+        if not math.isfinite(age):
+            raise SurvivalModelError("Age must be finite.")
+        age_range = model["features"].get("training_ranges", {}).get("age_years", [])
+        if len(age_range) != 2 or not age_range[0] <= age <= age_range[1]:
+            raise SurvivalModelError("Age is outside the UCSF model training range.")
+        sex = payload.get("sex")
+        if sex not in ("F", "M"):
+            raise SurvivalModelError("Sex must be one of the UCSF model categories: F or M.")
+        if radiomics is not None:
+            raise SurvivalModelError("UCSF clinical model does not accept CaPTk or BrainFusion radiomics.")
+        encoded = {"age_at_mri_years": age, "sex_M": float(sex == "M")}
+        return np.asarray([encoded[name] for name in model["features"]["names"]], dtype=float)
     schema = model.get("features", {}).get("encoding", {})
     required = schema.get("inputs")
     if not isinstance(required, list) or set(required) != {"age_years", "gender", "IDH1", "GTR_over90percent"}:
@@ -290,7 +331,8 @@ def public_model(model: Mapping[str, Any]) -> dict:
         "model_type": model["model_type"],
         "research_only": True,
         "endpoint_status": model["endpoint"]["status"],
-        "official_endpoint_validated": False,
+        "official_endpoint_validated": model["endpoint"].get("official_endpoint_validated") is True,
+        "dataset": model.get("dataset"),
         "time_unit": model["endpoint"]["time_unit"],
         "feature_names": model["features"]["names"],
         "training": model["training"],

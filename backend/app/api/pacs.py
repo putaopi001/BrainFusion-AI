@@ -119,8 +119,40 @@ def instances(study_uid: str, series_uid: str, limit: int = Query(100, ge=1, le=
 @router.get('/studies/{study_uid}/series/{series_uid}/view-manifest', dependencies=[Depends(no_store)])
 def view_manifest(study_uid: str, series_uid: str):
     validate_uid(study_uid); validate_uid(series_uid)
-    with PacsClient() as archive:
-        return {'code':200,'data':series_manifest(archive,study_uid,series_uid)}
+    config = load_config()
+    if not config.allow_pixel_read or not config.expected_database_server_identifier:
+        fail('pixel_read_disabled', '隔离归档只读阅片需要本地启用像素读取并固定归档标识。')
+    with ReconciliationClient(config) as archive:
+        manifest = series_manifest(archive, study_uid, series_uid)
+    for row in manifest['instances']:
+        row['metadata']['7FE00010']['BulkDataURI'] = (
+            f'/pacs/archive/studies/{study_uid}/series/{series_uid}/instances/{row["instance_uid"]}/frames/1'
+            f'?metadata_sha256={row["metadata_sha256"]}&archive_fingerprint={config.endpoint_fingerprint}')
+    manifest.update(source_case_id=None, archive_only=True, transport_enabled=True,
+                    saved_dicom_annotations_available=False, dicom_view_state_available=False,
+                    segmentation_overlay_available=False)
+    return {'code': 200, 'data': manifest}
+
+
+@router.get('/archive/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame_number}')
+def archive_frame(study_uid: str, series_uid: str, instance_uid: str,
+                  frame_number: int = ApiPath(ge=1, le=1),
+                  metadata_sha256: str = Query(pattern=r'^[0-9a-f]{64}$'),
+                  archive_fingerprint: str = Query(pattern=r'^[0-9a-f]{64}$')):
+    for uid in (study_uid, series_uid, instance_uid):
+        validate_uid(uid)
+    config = load_config()
+    if not config.allow_pixel_read or not config.expected_database_server_identifier:
+        fail('pixel_read_disabled', '隔离归档的帧读取仅在已固定身份的研究阅片配置中启用。')
+    if config.endpoint_fingerprint != archive_fingerprint:
+        fail('archive_revision_mismatch', '隔离归档配置版本已变化，请重新打开序列。', 409)
+    with ReconciliationClient(config) as archive:
+        item, expected = checked_metadata(archive, study_uid, series_uid, instance_uid)
+        if metadata_revision(item) != metadata_sha256:
+            fail('instance_revision_mismatch', 'DICOM 元数据版本已变化，拒绝使用旧帧地址。', 409)
+        pixels = frame_bytes(archive, study_uid, series_uid, instance_uid, expected)
+    body, content_type = multipart_response(pixels)
+    return Response(body, media_type=content_type, headers={'Cache-Control': 'no-store'})
 
 
 @router.get('/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata')

@@ -40,8 +40,11 @@ function initialize() {
   initialized = true
 }
 
-export function dicomImageIds(manifest, { caseId, studyUid, seriesUid, baseURL, sessionId }) {
-  if (manifest.format !== 'dicom-series-view-manifest-v1' || manifest.source_case_id !== caseId
+export function dicomImageIds(manifest, { caseId, archiveOnly = false, studyUid, seriesUid, baseURL, sessionId }) {
+  const sourceMatches = archiveOnly
+    ? manifest.archive_only === true && manifest.source_case_id == null && caseId == null
+    : manifest.archive_only !== true && manifest.source_case_id === caseId
+  if (manifest.format !== 'dicom-series-view-manifest-v1' || !sourceMatches
       || manifest.study_uid !== studyUid || manifest.series_uid !== seriesUid
       || !manifest.transport_enabled || !manifest.pixel_read_enabled || !manifest.archive_server_identity_pinned
       || !hash.test(manifest.metadata_sha256) || !hash.test(manifest.archive_fingerprint)
@@ -58,8 +61,10 @@ export function dicomImageIds(manifest, { caseId, studyUid, seriesUid, baseURL, 
     if (!uid.test(row.instance_uid) || row.instance_uid.length > 64 || seen.has(row.instance_uid)
         || !hash.test(row.metadata_sha256)) throw Error('DICOM 实例身份或版本无效。')
     seen.add(row.instance_uid)
-    const expected = '/pacs/cases/' + caseId + '/studies/' + studyUid + '/series/' + seriesUid
-      + '/instances/' + row.instance_uid + '/frames/1'
+    const expected = archiveOnly
+      ? '/pacs/archive/studies/' + studyUid + '/series/' + seriesUid + '/instances/' + row.instance_uid + '/frames/1'
+      : '/pacs/cases/' + caseId + '/studies/' + studyUid + '/series/' + seriesUid
+        + '/instances/' + row.instance_uid + '/frames/1'
     const bulk = row.metadata?.['7FE00010']?.BulkDataURI
     const uri = new URL(bulk, base)
     if (typeof bulk !== 'string' || !bulk.startsWith(expected + '?') || uri.pathname !== expected

@@ -1,5 +1,11 @@
 # 剩余工作与放行条件
 
+## Current engineering handoff — 2026-10-26
+
+The isolated demo now provides a usable read-only Stage7 Orthanc study browser and a UCSF-PDGM GBM Cox option in the existing Research page. Live E2E evidence confirms real DICOM pixels and real artifact-backed synthetic prediction. No follow-up software implementation is needed for these paths.
+
+Remaining research limits: the UCSF model has internal validation only and must remain `SYNTHETIC_TEST`; it is not a clinical prediction tool. The official UPENN survival endpoint remains blocked by its unresolved censor-field dictionary. No authoritative DICOM-to-NIfTI case association was made, and the archive page cannot convert studies or submit inference. Formal PACS/AI gates remain unchanged.
+
 ## Latest blocker resolution — 2026-10-26
 
 This current snapshot supersedes older statements below that the crosswalk was unavailable or no real-data exploratory model had been run. Those older sections remain as dated history.

@@ -47,7 +47,7 @@ import { parseNiftiVolume, sameGeometry } from './niftiGeometry'
 import { createMeasurementSession } from './cornerstoneMeasurements'
 import { viewportOrientationLabels } from './orientationLabels'
 
-const props = defineProps({ caseId: { type: Number, required: true }, dicomSelection: { type: Object, default: null } })
+const props = defineProps({ caseId: { type: Number, default: null }, dicomSelection: { type: Object, default: null }, archiveOnly: { type: Boolean, default: false } })
 const dicomSource = Boolean(props.dicomSelection)
 const dicomRevision = ref('')
 let dicomSession
@@ -327,13 +327,16 @@ onMounted(async () => {
     viewportIds.forEach(v => group.addViewport(v, id))
     if (dicomSource) {
       const selection = props.dicomSelection
-      const manifest = (await request.get('/pacs/cases/' + props.caseId + '/studies/' + selection.studyUid + '/series/' + selection.seriesUid + '/view-manifest', { signal: controller.signal })).data.data
+      const manifestUrl = props.archiveOnly
+        ? '/pacs/studies/' + selection.studyUid + '/series/' + selection.seriesUid + '/view-manifest'
+        : '/pacs/cases/' + props.caseId + '/studies/' + selection.studyUid + '/series/' + selection.seriesUid + '/view-manifest'
+      const manifest = (await request.get(manifestUrl, { signal: controller.signal })).data.data
       dicomManifest = manifest
       if (disposed) return
       const { createDicomSession } = await import('./dicomVolume')
       if (disposed) return
       dicomSession = createDicomSession(controller.signal)
-      const volume = await dicomSession.load(manifest, { caseId: props.caseId, ...selection, baseURL: request.defaults.baseURL, sessionId: id, volumeId: id + '-dicom-' + manifest.metadata_sha256 })
+      const volume = await dicomSession.load(manifest, { caseId: props.caseId, archiveOnly: props.archiveOnly, ...selection, baseURL: request.defaults.baseURL, sessionId: id, volumeId: id + '-dicom-' + manifest.metadata_sha256 })
       if (disposed) return
       volumes.set('dicom', volume)
       await setVolumesForViewports(engine, [{ volumeId: volume.volumeId }], viewportIds)

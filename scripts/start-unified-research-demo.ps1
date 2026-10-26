@@ -13,7 +13,8 @@ $PrepareAccount = Join-Path $BackendRoot 'tools\prepare_unified_demo_account.py'
 $DemoRoot = [System.IO.Path]::GetFullPath($DemoRoot)
 $ExpectedArtifacts = @(
     @{ Id = 'upenn-clinical-cox-research'; Directory = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\upenn-clinical-cox-research-v1.0.1'; Sha = '41c52f20371dd33a25c60bf981a6a811c6863bc01834062d33e6e4ae7f3ce8ff'; ManifestSha = '200a732297835ca7b3c2319b447191d8a8616b7a137a180f411e60533cee3df0' },
-    @{ Id = 'upenn-clinical-captk-fusion-cox-research'; Directory = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\upenn-clinical-captk-fusion-cox-research-v1.0.0'; Sha = '0988d6d145e103cea90c5c15daff94a17d1cf8741ea65c63d957f7915de3b034'; ManifestSha = '4c8051d5ae6c5d179fce32b18d1f3cae7160e662e21374de92e7dd215c323812' }
+    @{ Id = 'upenn-clinical-captk-fusion-cox-research'; Directory = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\upenn-clinical-captk-fusion-cox-research-v1.0.0'; Sha = '0988d6d145e103cea90c5c15daff94a17d1cf8741ea65c63d957f7915de3b034'; ManifestSha = '4c8051d5ae6c5d179fce32b18d1f3cae7160e662e21374de92e7dd215c323812' },
+    @{ Id = 'ucsf-pdgm-clinical-cox-research'; Directory = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\ucsf-pdgm-clinical-cox-research-v1.0.0'; Sha = '9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016'; ManifestSha = '7f24e6a48987b3ad501439fe18e62b3134fba781430128f1637f0ce19b5a21ac' }
 )
 
 function Get-Sha256([string]$Path) {
@@ -50,13 +51,14 @@ $lockPath = Join-Path $DemoRoot 'demo.lock'
 $lock = $null
 $backendProcess = $null
 $frontendProcess = $null
+$authPath = $null
 $savedEnvironment = @{}
 $keys = @(
     'DATABASE_URL','UPLOAD_DIR','LOCAL_AUTH_FILE','RESEARCH_DIR','DATASET_DIR','FEATURE_JOBS_DIR',
     'RADIOMICS_COMPATIBILITY','RADIOMICS_PYTHON','MODEL_DIR','PACS_ALLOW_DOCKER_HOST','PACS_CONFIG_FILE',
-    'PACS_IMPORT_REGISTRY_FILE','PACS_IMPORT_JOBS_DIR','PACS_DERIVED_DIR','DICOM_QUARANTINE_DIR',
+    'PACS_RESEARCH_DEMO_PIXEL_READ','PACS_IMPORT_REGISTRY_FILE','PACS_IMPORT_JOBS_DIR','PACS_DERIVED_DIR','DICOM_QUARANTINE_DIR',
     'DICOM_CONVERSION_INDEX_FILE','SURVIVAL_MODEL_DIR','SURVIVAL_FUSION_MODEL_DIR',
-    'SURVIVAL_RESEARCH_PREDICTION_ENABLED','CORS_ORIGINS','PROJECT_NAME','VITE_API_BASE','VITE_UNIFIED_RESEARCH_DEMO'
+    'SURVIVAL_RESEARCH_PREDICTION_ENABLED','SURVIVAL_UCSF_MODEL_DIR','CORS_ORIGINS','PROJECT_NAME','VITE_API_BASE','VITE_UNIFIED_RESEARCH_DEMO'
 )
 foreach ($key in $keys) { $savedEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process') }
 
@@ -83,6 +85,52 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the disposable local demo login.' }
     $account = $accountText | ConvertFrom-Json
 
+    $stage7ConfigPath = 'E:\BrainFusion-Runtime\stage7_orthanc_20261021\pacs-config.json'
+    if (-not (Test-Path -LiteralPath $stage7ConfigPath -PathType Leaf)) { throw 'The existing Stage7 isolated Orthanc configuration is unavailable.' }
+    $stage7Config = Get-Content -LiteralPath $stage7ConfigPath -Raw | ConvertFrom-Json
+    if ($stage7Config.archive_id -ne 'stage7-orthanc' -or $stage7Config.base_url -ne 'http://127.0.0.1:18142' -or -not $stage7Config.expected_database_server_identifier) {
+        throw 'Stage7 archive identity or loopback endpoint does not match the reviewed research archive.'
+    }
+    $dockerInspect = (& docker inspect brainfusion-stage7-orthanc | Out-String) | ConvertFrom-Json
+    $configMountMatches = @($dockerInspect[0].Mounts | Where-Object {
+        (($_.Source -replace '\\','/') -match '/BrainFusion-Runtime/stage7_orthanc_20261021/orthanc\.json$') -and
+        $_.Destination -eq '/etc/orthanc/orthanc.json'
+    })
+    $archiveContainerMatches = ($LASTEXITCODE -eq 0 -and $dockerInspect[0].State.Status -eq 'running' -and
+        $dockerInspect[0].Config.Image -eq 'orthancteam/orthanc:26.9.1' -and
+        $dockerInspect[0].NetworkSettings.Ports.'8042/tcp'[0].HostIp -eq '127.0.0.1' -and
+        $dockerInspect[0].NetworkSettings.Ports.'8042/tcp'[0].HostPort -eq '18142' -and
+        $configMountMatches.Count -eq 1)
+    if (-not $archiveContainerMatches) {
+        throw 'Stage7 Orthanc container, image, loopback port or config mount failed the isolated-archive check.'
+    }
+    $stage7Secure = ConvertTo-SecureString $stage7Config.password -AsPlainText -Force
+    $stage7Credential = [pscredential]::new($stage7Config.username, $stage7Secure)
+    $basicBytes = [System.Text.Encoding]::UTF8.GetBytes($stage7Credential.UserName + ':' + $stage7Credential.GetNetworkCredential().Password)
+    $basicToken = [Convert]::ToBase64String($basicBytes)
+    Add-Type -AssemblyName System.Net.Http
+    $httpClient = [System.Net.Http.HttpClient]::new()
+    try {
+        $httpClient.Timeout = [TimeSpan]::FromSeconds(8)
+        $httpClient.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Basic', $basicToken)
+        $stage7System = ($httpClient.GetStringAsync($stage7Config.base_url + '/system').GetAwaiter().GetResult() | ConvertFrom-Json)
+        $stage7Stats = ($httpClient.GetStringAsync($stage7Config.base_url + '/statistics').GetAwaiter().GetResult() | ConvertFrom-Json)
+    } finally {
+        $httpClient.Dispose()
+        [Array]::Clear($basicBytes, 0, $basicBytes.Length)
+        $basicToken = $null
+    }
+    if (-not $stage7System.DatabaseServerIdentifier -or $stage7Stats.CountStudies -lt 1 -or $stage7Stats.CountInstances -lt 2) {
+        throw 'Stage7 Orthanc did not expose a pinned database identity and a viewable archive.'
+    }
+    $pacsReadonlyRoot = Join-Path $runtimeRoot 'pacs-readonly'
+    New-Item -ItemType Directory -Force -Path $pacsReadonlyRoot | Out-Null
+    $pacsReadonlyConfigPath = Join-Path $pacsReadonlyRoot 'stage7-research.json'
+    $stage7Config.expected_database_server_identifier = $stage7System.DatabaseServerIdentifier
+    $stage7Config.allow_pixel_read = $false
+    $stage7Config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $pacsReadonlyConfigPath -Encoding utf8
+    Write-Host "Isolated Stage7 archive verified: studies=$($stage7Stats.CountStudies); series=$($stage7Stats.CountSeries); instances=$($stage7Stats.CountInstances); source PIN refreshed only in disposable demo config."
+
     $apiPort = Get-FreePort 18231 18279
     $frontPort = Get-FreePort 5190 5249
     $apiUrl = "http://127.0.0.1:$apiPort"
@@ -99,7 +147,8 @@ try {
         RADIOMICS_PYTHON = 'E:\BrainFusion-Runtime\envs\radiomics39\python.exe'
         MODEL_DIR = Join-Path $runtimeRoot 'segresnet-disabled'
         PACS_ALLOW_DOCKER_HOST = 'false'
-        PACS_CONFIG_FILE = Join-Path $configRoot 'no-pacs-config.json'
+        PACS_CONFIG_FILE = $pacsReadonlyConfigPath
+        PACS_RESEARCH_DEMO_PIXEL_READ = 'true'
         PACS_IMPORT_REGISTRY_FILE = Join-Path $configRoot 'no-pacs-registry.json'
         PACS_IMPORT_JOBS_DIR = Join-Path $runtimeRoot 'pacs-import-jobs'
         PACS_DERIVED_DIR = Join-Path $runtimeRoot 'pacs-derived'
@@ -107,6 +156,7 @@ try {
         DICOM_CONVERSION_INDEX_FILE = Join-Path $configRoot 'no-dicom-conversions.json'
         SURVIVAL_MODEL_DIR = $ExpectedArtifacts[0].Directory
         SURVIVAL_FUSION_MODEL_DIR = $ExpectedArtifacts[1].Directory
+        SURVIVAL_UCSF_MODEL_DIR = 'E:\BrainFusion-Runtime\research-edition\results\survival-models\ucsf-pdgm-clinical-cox-research-v1.0.0'
         SURVIVAL_RESEARCH_PREDICTION_ENABLED = 'true'
         CORS_ORIGINS = $frontUrl
         PROJECT_NAME = 'BrainFusion-AI Isolated Research Demo'
@@ -134,7 +184,7 @@ try {
             $models = Invoke-RestMethod -Uri "$apiUrl/api/survival/models" -TimeoutSec 5
             $front = Invoke-WebRequest -Uri "$frontUrl/" -TimeoutSec 2 -UseBasicParsing
             $availableIds = @($models.data.models | ForEach-Object { $_.model_id })
-            if ($health.data.status -eq 'healthy' -and $availableIds -contains $ExpectedArtifacts[0].Id -and $availableIds -contains $ExpectedArtifacts[1].Id -and $front.StatusCode -eq 200) {
+            if ($health.data.status -eq 'healthy' -and @($ExpectedArtifacts | Where-Object { $availableIds -contains $_.Id }).Count -eq $ExpectedArtifacts.Count -and $front.StatusCode -eq 200) {
                 $ready = $true; break
             }
         } catch { Start-Sleep -Seconds 1 }
@@ -164,6 +214,9 @@ finally {
     foreach ($proc in @($frontendProcess,$backendProcess)) {
         if ($null -ne $proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue }
     }
+    $temporaryPacsConfig = Join-Path (Join-Path $DemoRoot 'runtime\pacs-readonly') 'stage7-research.json'
+    if (Test-Path -LiteralPath $temporaryPacsConfig) { Remove-Item -LiteralPath $temporaryPacsConfig -Force }
+    if ($authPath -and (Test-Path -LiteralPath $authPath)) { Remove-Item -LiteralPath $authPath -Force }
     foreach ($key in $keys) { [Environment]::SetEnvironmentVariable($key, $savedEnvironment[$key], 'Process') }
     if ($null -ne $lock) { $lock.Dispose() }
 }

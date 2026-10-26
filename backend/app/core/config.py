@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     FEATURE_JOBS_DIR: str = "E:/BrainFusion-Runtime/results/feature_jobs"
     PACS_CONFIG_FILE: str = "E:/BrainFusion-Runtime/local/pacs-config.json"
     PACS_ALLOW_DOCKER_HOST: bool = False
+    PACS_RESEARCH_DEMO_PIXEL_READ: bool = False
     PACS_IMPORT_REGISTRY_FILE: str = "E:/BrainFusion-Runtime/local/pacs-import-candidates.json"
     PACS_IMPORT_JOBS_DIR: str = "E:/BrainFusion-Runtime/local/pacs-imports"
     PACS_DERIVED_DIR: str = "E:/BrainFusion-Data/PACS-derived"
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
     # runtime configuration are supplied.
     SURVIVAL_MODEL_DIR: str = ""
     SURVIVAL_FUSION_MODEL_DIR: str = ""
+    SURVIVAL_UCSF_MODEL_DIR: str = ""
     SURVIVAL_RESEARCH_PREDICTION_ENABLED: bool = False
 
     # CORS 允许来源（逗号分隔字符串，部署时通过环境变量覆盖）

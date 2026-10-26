@@ -20,6 +20,7 @@
         <el-menu-item index="/"><span class="menu-dot"></span>工作台</el-menu-item>
         <el-menu-item index="/cases"><span class="menu-dot"></span>病例管理</el-menu-item>
         <el-menu-item index="/patients"><span class="menu-dot"></span>患者管理</el-menu-item>
+        <el-menu-item index="/dicom-archive"><span class="menu-dot"></span>隔离 DICOM 归档</el-menu-item>
         <el-menu-item index="/research"><span class="menu-dot"></span>IDH 与融合研究</el-menu-item>
       </el-menu>
 
@@ -58,6 +59,7 @@ const activeMenu = computed(() => {
   if (route.path.startsWith("/research")) return "/research"
   if (route.path.startsWith("/cases")) return "/cases"
   if (route.path.startsWith("/patients")) return "/patients"
+  if (route.path.startsWith("/dicom-archive")) return "/dicom-archive"
   return "/"
 })
 
@@ -65,6 +67,7 @@ const pageTitle = computed(() => {
   if (route.path.startsWith("/research")) return "IDH 与融合研究"
   if (route.path.startsWith("/cases")) return "病例管理"
   if (route.path.startsWith("/patients")) return "患者管理"
+  if (route.path.startsWith("/dicom-archive")) return "隔离 DICOM 研究归档"
   if (route.path.startsWith("/case/")) return "病例详情"
   if (route.path.startsWith("/upload-mri")) return "MRI 影像上传"
   if (route.path.startsWith("/analysis")) return "AI 智能分析"

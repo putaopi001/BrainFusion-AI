@@ -8,6 +8,7 @@ const routes = [
   { path: '/analysis', component: () => import('../views/Analysis.vue') },
   { path: '/report', component: () => import('../views/Report.vue') },
   { path: '/research', component: () => import('../views/Research.vue') },
+  { path: '/dicom-archive', component: () => import('../views/DicomArchive.vue') },
   { path: '/case/:id', name: 'case-detail', component: () => import('../views/CaseDetail.vue') },
   { path: '/upload-mri/:case_id', name: 'upload-mri', component: () => import('../views/UploadMRI.vue') },
   { path: '/workstation/:id', name: 'workstation', component: () => import('../views/Workstation.vue') },

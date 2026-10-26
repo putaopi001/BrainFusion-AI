@@ -1,5 +1,6 @@
 import hashlib
 import json
+import csv
 
 import numpy as np
 import pytest
@@ -11,6 +12,7 @@ from app.main import app
 from app.services.local_auth import require_doctor
 from app.services.survival_model import (SurvivalModelError, encode_clinical_inputs,
                                          load_model, predict)
+from scripts import train_ucsf_pdgm_cox as ucsf_training
 
 
 FEATURES = ["age_years", "gender_M", "IDH1_mutated", "IDH1_NOS_NEC",
@@ -236,5 +238,88 @@ def test_api_is_disabled_by_default_without_artifact(monkeypatch):
                 "requested_times_days": [365],
             })
             assert disabled.status_code == 503
+    finally:
+        app.dependency_overrides.pop(require_doctor, None)
+
+
+def test_ucsf_gbm_cox_training_contract_and_patient_level_cv(tmp_path):
+    source = tmp_path / "synthetic-clinical.csv"
+    columns = ["ID", "Sex", "Age at MRI", "WHO CNS Grade",
+               "Final pathologic diagnosis (WHO 2021)", "1-dead 0-alive", "OS"]
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=columns)
+        writer.writeheader()
+        for index in range(80):
+            writer.writerow({"ID": f"SYNTH-{index:03d}", "Sex": "M" if index % 2 else "F",
+                             "Age at MRI": 45 + index % 35, "WHO CNS Grade": 4,
+                             "Final pathologic diagnosis (WHO 2021)": "Glioblastoma, IDH-wildtype",
+                             "1-dead 0-alive": 1 if index < 50 else 0,
+                             "OS": 100 + (index * 31) % 1400})
+        for index in range(6):
+            writer.writerow({"ID": f"SYNTH-{index:03d}_FU0007", "Sex": "F", "Age at MRI": 60,
+                             "WHO CNS Grade": 4,
+                             "Final pathologic diagnosis (WHO 2021)": "Glioblastoma, IDH-wildtype",
+                             "1-dead 0-alive": 0, "OS": 200})
+        writer.writerow({"ID": "SYNTH-OTHER", "Sex": "F", "Age at MRI": 52, "WHO CNS Grade": 2,
+                         "Final pathologic diagnosis (WHO 2021)": "Astrocytoma, IDH-mutant",
+                         "1-dead 0-alive": 1, "OS": 300})
+    model, summary = ucsf_training.build_artifact(source)
+    assert model["dataset"]["id"] == "UCSF-PDGM"
+    assert model["endpoint"]["official_endpoint_validated"] is True
+    assert model["training"]["n"] == 80
+    assert model["training"]["events"] == 50
+    assert model["training"]["censored"] == 30
+    assert summary["patient_level_outputs_saved"] is False
+    output = tmp_path / "model"
+    hashes = ucsf_training.write_model(model, summary, output)
+    assert len(hashes["artifact_sha256"]) == 64
+    loaded = load_model(output, model_id=ucsf_training.MODEL_ID)
+    result = predict(loaded, {"age_years": 63, "sex": "F"}, [365, 730, 1095])
+    probabilities = [point["survival_probability"] for point in result["survival_curve"]]
+    assert all(np.isfinite(value) and 0 <= value <= 1 for value in probabilities)
+    assert probabilities == sorted(probabilities, reverse=True)
+    with pytest.raises(SurvivalModelError, match="exactly age_years and sex"):
+        predict(loaded, {"age_years": 63, "sex": "F", "IDH1": "Wildtype"}, [365])
+
+
+def test_ucsf_gbm_model_is_listed_and_predicts_only_synthetic_inputs(tmp_path, monkeypatch):
+    source = tmp_path / "synthetic-clinical.csv"
+    columns = ["ID", "Sex", "Age at MRI", "WHO CNS Grade",
+               "Final pathologic diagnosis (WHO 2021)", "1-dead 0-alive", "OS"]
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=columns)
+        writer.writeheader()
+        for index in range(80):
+            writer.writerow({"ID": f"SYNTH-{index:03d}", "Sex": "M" if index % 2 else "F",
+                             "Age at MRI": 45 + index % 35, "WHO CNS Grade": 4,
+                             "Final pathologic diagnosis (WHO 2021)": "Glioblastoma, IDH-wildtype",
+                             "1-dead 0-alive": 1 if index < 50 else 0,
+                             "OS": 100 + (index * 31) % 1400})
+    model, summary = ucsf_training.build_artifact(source)
+    model_dir = tmp_path / "ucsf-model"
+    ucsf_training.write_model(model, summary, model_dir)
+    monkeypatch.setattr(settings, "SURVIVAL_UCSF_MODEL_DIR", str(model_dir))
+    monkeypatch.setattr(settings, "SURVIVAL_RESEARCH_PREDICTION_ENABLED", True)
+    app.dependency_overrides[require_doctor] = lambda: {"id": "synthetic-reviewer", "role": "doctor"}
+    try:
+        with TestClient(app) as client:
+            models = client.get("/api/survival/models").json()["data"]["models"]
+            assert ucsf_training.MODEL_ID in {item["model_id"] for item in models}
+            response = client.post("/api/survival/predict", json={
+                "declared_use_scope": "SYNTHETIC_TEST", "model_id": ucsf_training.MODEL_ID,
+                "clinical": {"age_years": 63, "sex": "F"},
+                "requested_times_days": [365, 730, 1095],
+            })
+            assert response.status_code == 200, response.text
+            data = response.json()["data"]
+            assert data["model_id"] == ucsf_training.MODEL_ID
+            assert data["endpoint_status"] == "OFFICIAL_DATASET_ENDPOINT_DOCUMENTED"
+            assert data["input_scope"] == "SYNTHETIC_TEST"
+            assert data["individual_prediction_saved"] is False
+            invalid = client.post("/api/survival/predict", json={
+                "declared_use_scope": "SYNTHETIC_TEST", "model_id": ucsf_training.MODEL_ID,
+                "clinical": {"age_years": 63, "sex": "X"}, "requested_times_days": [365],
+            })
+            assert invalid.status_code == 422
     finally:
         app.dependency_overrides.pop(require_doctor, None)

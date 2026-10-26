@@ -50,3 +50,17 @@ The isolated runtime also contains `upenn-clinical-captk-fusion-cox-research` ve
 For the prior matched-cohort comparison, the existing five-fold CV is reused and not rerun: mean fold C-index was 0.6495 (SD 0.0252) for clinical-only, 0.5273 (0.0190) for CaPTk-only, and 0.6510 (0.0260) for combined. This does not demonstrate fusion gain. The inputs are modality-specific original intensity means; model standardization is fit on the full development cohort for the final artifact and separately within training folds in the previous CV. BrainFusion's own 20 features are not equivalent, are not accepted by the fusion API, and are not mapped to these CaPTk inputs.
 
 The reproducible final fusion-artifact trainer is `backend/tools/train_upenn_fusion_cox.py`. It verifies the official clinical CSV SHA, TCIA feature archive SHA, existing audited CV results SHA, exact feature names, exact scan IDs and the expected N=596/574/22 cohort. It does not rerun CV or write IDs/rows/predictions. Use a new empty versioned runtime output path to rebuild.
+
+## UCSF-PDGM GBM clinical Cox artifact
+
+- ID: `ucsf-pdgm-clinical-cox-research`
+- Version: `1.0.0`
+- Dataset: TCIA UCSF-PDGM Version 5 (2025-05-30); clinical CSV and glossary downloaded from the TCIA official release attachments. Model artifact and manifest are held only in the protected research runtime.
+- Official source references: [TCIA UCSF-PDGM collection](https://www.cancerimagingarchive.net/collection/ucsf-pdgm/), [official metadata v5 CSV](https://www.cancerimagingarchive.net/wp-content/uploads/UCSF-PDGM-metadata_v5.csv), [official metadata glossary](https://www.cancerimagingarchive.net/wp-content/uploads/UCSF-PDGM-metadata_glossary.csv), [TCIA release data notes](https://github.com/data-nih/tcia/blob/main/ucsf-pdgm.md).
+- Cohort: baseline-only final diagnosis `Glioblastoma, IDH-wildtype`; N=367, with 223 deaths and 144 censored records. The other six `_FU` follow-up rows are excluded so each patient appears once.
+- Endpoint: TCIA v5 glossary documents `OS` in days from initial diagnosis to last clinical follow-up and `1-dead 0-alive` as vital status at last follow-up. The event/time interpretation follows those dataset fields; the model remains research-only and does not establish clinical utility.
+- Inputs: age at preoperative MRI and sex only. Survival time, vital status and follow-up fields are never predictors. MRI age is not asserted to equal age at initial diagnosis. The model does not accept UPENN resection or CaPTk features.
+- Training: ridge Cox PH (`alpha=0.01`) with Efron tie handling; five-fold patient-level stratified internal cross-validation, seed `20261026`, all preprocessing fit within training folds. Mean fold Harrell C-index `0.6373`; pooled out-of-fold C-index `0.6321`. Mean-fold IPCW Brier scores at 365/730/1095 days were `0.2082/0.2105/0.1648`.
+- Artifact SHA-256: `9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016`. The isolated runtime checks the manifest hash before loading.
+- Limits: one-center internal validation only; no external cohort or clinical validation. Age is measured at MRI, which can differ from the initial-diagnosis time origin. The model is suitable only for `SYNTHETIC_TEST` software demonstration, not real-patient prediction or decisions. UCSF and UPENN C-index values are not directly comparable because cohorts and endpoints differ.
+- Reproduction entry point: `backend/scripts/train_ucsf_pdgm_cox.py`; the script is for a new versioned runtime output and must not target the repository or production paths.

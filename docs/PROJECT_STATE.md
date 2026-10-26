@@ -1,5 +1,12 @@
 # Project execution state
 
+## Current engineering delivery — 2026-10-26
+
+- The unified isolated demo has a separate read-only DICOM archive route at `/dicom-archive`. It displays the existing Stage7 Orthanc archive and can open a validated MR series through the guarded DICOMweb frame proxy. DICOM Study/Series and the copied NIfTI engineering case remain separate; no automatic patient mapping, conversion or AI submission is available there.
+- A TCIA UCSF-PDGM v5 regularized clinical Cox artifact is available to the isolated research process: ID `ucsf-pdgm-clinical-cox-research`, version `1.0.0`, N=367 IDH-wildtype GBM records, 223 events/144 censored. Five-fold patient-level internal validation only; mean-fold Harrell C-index 0.6373. Protected runtime artifact SHA-256: `9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016`.
+- Live browser/API acceptance passed: the isolated UI opened 192 actual archive frames and used the real UCSF artifact/API with synthetic inputs to render finite, monotone 1/2/3-year probabilities. The isolated database had zero prediction rows after the run. Aggregate evidence: `E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo\unified-live-e2e.json`.
+- The UCSF model is research-only and not externally or clinically validated. Official TCIA v5 endpoint fields are documented; age-at-MRI can differ from age at initial diagnosis. UPENN endpoint and imaging-fusion blockers remain separate. Formal services/database and their PACS/DICOM/pixel/AI gates were not modified.
+
 ## Latest blocker resolution — 2026-10-26
 
 This is the current status; earlier dated sections are historical snapshots and do not override it.

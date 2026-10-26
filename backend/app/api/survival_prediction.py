@@ -11,26 +11,20 @@ from app.services.survival_model import SurvivalModelError
 router = APIRouter(prefix="/api/survival", tags=["research-survival-model"])
 
 
-class ClinicalCovariates(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    age_years: float = Field(ge=18, le=120)
-    gender: Literal["F", "M"]
-    IDH1: Literal["Wildtype", "Mutated", "NOS/NEC"]
-    GTR_over90percent: Literal["N", "Y", "UNKNOWN"]
-
-
 class SyntheticPredictionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     declared_use_scope: Literal["SYNTHETIC_TEST"]
-    model_id: Literal[survival_model.CLINICAL_MODEL_ID, survival_model.FUSION_MODEL_ID]
-    clinical: ClinicalCovariates
+    model_id: Literal[survival_model.CLINICAL_MODEL_ID, survival_model.FUSION_MODEL_ID,
+                       survival_model.UCSF_MODEL_ID]
+    clinical: dict[str, float | str]
     radiomics: dict[str, float] | None = None
     requested_times_days: list[float] = Field(min_length=1, max_length=24)
 
 
 def available_models() -> tuple[list[dict], dict[str, str]]:
     models, unavailable = [], {}
-    for model_id in (survival_model.CLINICAL_MODEL_ID, survival_model.FUSION_MODEL_ID):
+    for model_id in (survival_model.CLINICAL_MODEL_ID, survival_model.FUSION_MODEL_ID,
+                     survival_model.UCSF_MODEL_ID):
         if survival_model.model_directory(model_id) is None:
             unavailable[model_id] = "No isolated model is configured, or research prediction is disabled."
             continue
@@ -77,7 +71,7 @@ def predict_survival(payload: SyntheticPredictionInput,
         raise HTTPException(503, "Research survival prediction is disabled or the selected model is unavailable.")
     try:
         model = survival_model.load_model(model_id=payload.model_id)
-        result = survival_model.predict(model, payload.clinical.model_dump(),
+        result = survival_model.predict(model, payload.clinical,
                                         payload.requested_times_days, payload.radiomics)
     except SurvivalModelError as error:
         raise HTTPException(422, str(error)) from error

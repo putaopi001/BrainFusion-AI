@@ -1,5 +1,14 @@
 # BrainFusion-AI 功能矩阵
 
+## Unified demo and UCSF-PDGM model — 2026-10-26
+
+This current delivery snapshot supersedes earlier statements that the unified demo had no working PACS archive or that only UPENN research models were available. Historical entries below are retained as dated records.
+
+- **Read-only Stage7 archive UI: PASS.** `/dicom-archive` now lists actual isolated Orthanc studies and series, shows aggregate Study/Series/Instance counts, and opens a series through an unlinked archive-only Cornerstone route. Live Edge acceptance queried 5 studies/5 series/652 instances and loaded 192 actual MR frames with HTTP 200. Import and AI bridge stayed disabled; no NIfTI case association, conversion or AI action is exposed on this page. Formal PACS remains unchanged.
+- **UCSF-PDGM clinical Cox: TRAINED / RESEARCH_ONLY.** Official TCIA v5 baseline GBM subset N=367 (223 events/144 censored), age-at-MRI and sex inputs, five-fold patient-level internal validation. Mean fold Harrell C-index 0.6373; pooled out-of-fold 0.6321. Mean-fold IPCW Brier at 365/730/1095 days 0.2082/0.2105/0.1648. Artifact SHA-256 `9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016`; protected runtime only, not Git.
+- **UCSF FastAPI/Vue integration: PASS for synthetic test.** The model appears in the existing list and a real API response drives the page’s relative risk, survival curve and 1/2/3-year values. No prediction row was persisted. The model is single-center and internally validated only; outputs remain `SYNTHETIC_TEST`, not clinical predictions.
+- **Unified live acceptance:** `E:\BrainFusion-Runtime\research-edition\demo\unified-research-demo\unified-live-e2e.json`. Formal services/database and their PACS/DICOM/AI gates were not changed.
+
 ## Latest blocker-resolution snapshot — 2026-10-26
 
 This snapshot supersedes earlier 2026-10-26 research status blocks below; they remain historical records.
