@@ -1,5 +1,17 @@
 # Project execution state
 
+## Survival research V2 worktree delivery — 2026-10-27
+
+Current V2 source branch: `codex/survival-research-v2`, based on frozen engineering commit `2684bff19ceb4706b30a8cafe61a2c7a1b2acb7d`. This is a separate research worktree; it does not replace or modify the frozen research-edition branch or formal runtime.
+
+- UCSF-PDGM v5 comparison completed on 367 baseline IDH-wildtype GBM cases (223 events, 144 censored), with four prespecified Cox candidates on one shared patient-level 5-fold split. No candidate met the paired stable-improvement rule. Keep age+sex Ridge baseline as V2; do not describe the numerically higher quadratic candidate as a validated gain.
+- Model artifact `ucsf-pdgm-clinical-cox-research` version `2.0.0`; SHA-256 `820ee0c05d50b49ee7343a2bed51b5ff60c70fad7d83551d5fa7f9fb60c5144c`; manifest SHA-256 `7a21393e7e3c5f02ca14a16f41eaac90b00885d0cdcd94958a975dd388f8799c`. Artifact and patient-level OOF records remain only in protected runtime.
+- Research Prediction page now displays the V2 cohort, feature schema, four-model comparison, internal validation metrics, and limitations. The isolated API retains `SYNTHETIC_TEST` and adds separately gated UCSF-only `RESEARCH_CASE`. That scope requires researcher attestation, local doctor-session/CSRF and an exact UCSF cohort declaration; membership is not independently verified, IDs are not accepted, and UPENN must not be submitted. Formal defaults remain disabled.
+- Verification: targeted backend tests 18 passed; Vite production build passed; live Edge/Vue → FastAPI E2E passed both scopes using the real V2 artifact, with zero persisted prediction rows. Evidence: `E:\BrainFusion-Runtime\research-edition\results\survival-v2-live-e2e-20261027\run-20261027T141518-6128e721`.
+- Scientific limits remain: internal single-center validation only; diagnosis-to-MRI interval is unmodeled; no independent validation or clinical utility. RSF is not run because `sksurv` is unavailable. UCSF imaging fusion is not run because a verified UCSF patient-level radiomics table is unavailable. UPENN OS remains separate and `BLOCKED_BY_DATA_DICTIONARY`.
+
+This checkpoint records the V2 worktree delivery only. It does not alter lifecycle state or artifacts in the original frozen project worktree.
+
 ## Current engineering delivery — 2026-10-26
 
 - **Engineering freeze source commit:** `748be418fd1cb6bcee73b70e648f9dc904701377` on `codex/research-edition-20261022`; the follow-up freeze note is documentation-only. Existing untracked `data/` is preserved and excluded.

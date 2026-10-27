@@ -1,4 +1,4 @@
-param()
+param([switch]$V2)
 $ErrorActionPreference = 'Stop'
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -8,14 +8,16 @@ $python = 'E:\BrainFusion-AI\.conda\brainfusion\python.exe'
 $runtime = 'E:\BrainFusion-Runtime\research-edition'
 $clinicalModel = Join-Path $runtime 'results\survival-models\upenn-clinical-cox-research-v1.0.1'
 $fusionModel = Join-Path $runtime 'results\survival-models\upenn-clinical-captk-fusion-cox-research-v1.0.0'
+$ucsfV2Model = Join-Path $runtime 'results\ucsf-pdgm-survival-v2-20261027\model-artifact'
 $expected = @{
   clinical = '41c52f20371dd33a25c60bf981a6a811c6863bc01834062d33e6e4ae7f3ce8ff'
   fusion = '0988d6d145e103cea90c5c15daff94a17d1cf8741ea65c63d957f7915de3b034'
+  ucsfV2 = '820ee0c05d50b49ee7343a2bed51b5ff60c70fad7d83551d5fa7f9fb60c5144c'
 }
 $formalPorts = @(18100, 18180)
 $processes = @()
 $sandbox = $null
-$evidenceRoot = Join-Path $runtime 'results\survival-live-artifact-e2e-20261026'
+$evidenceRoot = if ($V2) { Join-Path $runtime 'results\survival-v2-live-e2e-20261027' } else { Join-Path $runtime 'results\survival-live-artifact-e2e-20261026' }
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
 $evidenceRun = Join-Path $evidenceRoot ('run-' + (Get-Date -Format 'yyyyMMddTHHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $evidenceRun | Out-Null
@@ -59,8 +61,14 @@ function Wait-Http([string]$Url, [System.Diagnostics.Process]$Process) {
 
 try {
   if (!(Test-Path -LiteralPath $python)) { throw "Expected BrainFusion interpreter missing: $python" }
-  foreach ($entry in @(@('clinical', $clinicalModel), @('fusion', $fusionModel))) {
-    $name = $entry[0]; $directory = $entry[1]
+  $modelEntries = if ($V2) {
+    @([pscustomobject]@{ Name = 'ucsfV2'; Directory = $ucsfV2Model })
+  } else {
+    @([pscustomobject]@{ Name = 'clinical'; Directory = $clinicalModel },
+      [pscustomobject]@{ Name = 'fusion'; Directory = $fusionModel })
+  }
+  foreach ($entry in $modelEntries) {
+    $name = $entry.Name; $directory = $entry.Directory
     $artifact = Join-Path $directory 'cox-model.json'
     $manifestPath = Join-Path $directory 'model-manifest.json'
     if (!(Test-Path -LiteralPath $artifact) -or !(Test-Path -LiteralPath $manifestPath)) {
@@ -117,9 +125,11 @@ with open(os.environ['TEST_AUTH_FILE'], 'w', encoding='utf-8') as f: json.dump(r
   $env:DATASET_DIR = Join-Path $sandbox 'dataset-empty'
   $env:FEATURE_JOBS_DIR = Join-Path $sandbox 'feature-jobs-empty'
   $env:MODEL_DIR = Join-Path $sandbox 'models-empty'
-  $env:SURVIVAL_MODEL_DIR = $clinicalModel
-  $env:SURVIVAL_FUSION_MODEL_DIR = $fusionModel
+  $env:SURVIVAL_MODEL_DIR = if ($V2) { '' } else { $clinicalModel }
+  $env:SURVIVAL_FUSION_MODEL_DIR = if ($V2) { '' } else { $fusionModel }
+  $env:SURVIVAL_UCSF_MODEL_DIR = if ($V2) { $ucsfV2Model } else { '' }
   $env:SURVIVAL_RESEARCH_PREDICTION_ENABLED = 'true'
+  $env:SURVIVAL_RESEARCH_CASE_ENABLED = if ($V2) { 'true' } else { 'false' }
   $env:CORS_ORIGINS = "http://127.0.0.1:$frontendPort,http://localhost:$frontendPort"
   $env:LOG_LEVEL = 'WARNING'
   $env:PYTHONUTF8 = '1'
@@ -137,7 +147,8 @@ with open(os.environ['TEST_AUTH_FILE'], 'w', encoding='utf-8') as f: json.dump(r
   $env:BRAINFUSION_API_URL = $apiUrl
   $env:BRAINFUSION_WEB_URL = $webUrl
   $env:BRAINFUSION_BROWSER_CHANNEL = 'msedge'
-  $env:BRAINFUSION_SURVIVAL_LIVE_E2E = '1'
+  $env:BRAINFUSION_SURVIVAL_LIVE_E2E = if ($V2) { '0' } else { '1' }
+  $env:BRAINFUSION_SURVIVAL_V2_LIVE_E2E = if ($V2) { '1' } else { '0' }
   $env:BRAINFUSION_LIVE_RESULT_PATH = Join-Path $evidenceRun 'live-api-results.json'
   $viteLog = Join-Path $sandbox 'vite.log'
   $viteErrorLog = Join-Path $sandbox 'vite-error.log'
@@ -150,7 +161,8 @@ with open(os.environ['TEST_AUTH_FILE'], 'w', encoding='utf-8') as f: json.dump(r
 
   Push-Location $frontend
   try {
-    $testOutput = & npm.cmd run test:e2e -- e2e/survival-live-artifact.spec.js 2>&1
+    $testSpec = if ($V2) { 'e2e/survival-v2-research-case.spec.js' } else { 'e2e/survival-live-artifact.spec.js' }
+    $testOutput = & $env:ComSpec /d /c "npm run test:e2e -- $testSpec 2>&1"
     $testExit = $LASTEXITCODE
     $testOutput | Out-File -LiteralPath (Join-Path $evidenceRun 'playwright.log') -Encoding utf8
   } finally { Pop-Location }
@@ -177,6 +189,12 @@ print(json.dumps({'prediction_rows': count, 'tables': len(tables)}))
 } catch {
   $errorText = $_.Exception.Message
 } finally {
+  if ($sandbox -and $evidenceRun) {
+    foreach ($logName in @('backend.log', 'backend-error.log', 'vite.log', 'vite-error.log', 'playwright.log')) {
+      $logPath = Join-Path $sandbox $logName
+      if (Test-Path -LiteralPath $logPath) { Copy-Item -LiteralPath $logPath -Destination (Join-Path $evidenceRun $logName) -Force }
+    }
+  }
   foreach ($process in $processes) {
     try { if (!$process.HasExited) { Stop-Process -Id $process.Id -ErrorAction Stop; $process.WaitForExit(5000) | Out-Null } } catch { }
   }
@@ -193,7 +211,8 @@ print(json.dumps({'prediction_rows': count, 'tables': len(tables)}))
       recorded_at = (Get-Date).ToString('o')
       status = if (!$errorText -and $testExit -eq 0 -and $backendHealthy -and $frontendHealthy -and $predictionCount -eq 0) { 'PASS' } else { 'FAIL_OR_BLOCKED' }
       error = $errorText
-      synthetic_only = $true
+      input_scope = if ($V2) { @('SYNTHETIC_TEST', 'RESEARCH_CASE') } else { @('SYNTHETIC_TEST') }
+      v2_isolated_opt_in = [bool]$V2
       backend_isolated = $true
       temporary_sqlite_used = $true
       temporary_account_used = $true
@@ -209,7 +228,7 @@ print(json.dumps({'prediction_rows': count, 'tables': len(tables)}))
     }
     $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $evidenceRun 'run-summary.json') -Encoding utf8
   }
-  Remove-Item Env:\BRAINFUSION_TEST_USERNAME,Env:\BRAINFUSION_TEST_PASSWORD,Env:\TEST_AUTH_FILE,Env:\TEST_BACKEND,Env:\TEST_DB_FILE,Env:\DATABASE_URL,Env:\LOCAL_AUTH_FILE,Env:\UPLOAD_DIR,Env:\RESEARCH_DIR,Env:\DATASET_DIR,Env:\FEATURE_JOBS_DIR,Env:\MODEL_DIR,Env:\SURVIVAL_MODEL_DIR,Env:\SURVIVAL_FUSION_MODEL_DIR,Env:\SURVIVAL_RESEARCH_PREDICTION_ENABLED,Env:\CORS_ORIGINS,Env:\LOG_LEVEL,Env:\PYTHONUTF8,Env:\VITE_API_BASE,Env:\BRAINFUSION_API_URL,Env:\BRAINFUSION_WEB_URL,Env:\BRAINFUSION_BROWSER_CHANNEL,Env:\BRAINFUSION_SURVIVAL_LIVE_E2E,Env:\BRAINFUSION_LIVE_RESULT_PATH -ErrorAction SilentlyContinue
+  Remove-Item Env:\BRAINFUSION_TEST_USERNAME,Env:\BRAINFUSION_TEST_PASSWORD,Env:\TEST_AUTH_FILE,Env:\TEST_BACKEND,Env:\TEST_DB_FILE,Env:\DATABASE_URL,Env:\LOCAL_AUTH_FILE,Env:\UPLOAD_DIR,Env:\RESEARCH_DIR,Env:\DATASET_DIR,Env:\FEATURE_JOBS_DIR,Env:\MODEL_DIR,Env:\SURVIVAL_MODEL_DIR,Env:\SURVIVAL_FUSION_MODEL_DIR,Env:\SURVIVAL_UCSF_MODEL_DIR,Env:\SURVIVAL_RESEARCH_PREDICTION_ENABLED,Env:\SURVIVAL_RESEARCH_CASE_ENABLED,Env:\CORS_ORIGINS,Env:\LOG_LEVEL,Env:\PYTHONUTF8,Env:\VITE_API_BASE,Env:\BRAINFUSION_API_URL,Env:\BRAINFUSION_WEB_URL,Env:\BRAINFUSION_BROWSER_CHANNEL,Env:\BRAINFUSION_SURVIVAL_LIVE_E2E,Env:\BRAINFUSION_SURVIVAL_V2_LIVE_E2E,Env:\BRAINFUSION_LIVE_RESULT_PATH -ErrorAction SilentlyContinue
 }
 
 if ($errorText -or $testExit -ne 0 -or $predictionCount -ne 0) {

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     SURVIVAL_FUSION_MODEL_DIR: str = ""
     SURVIVAL_UCSF_MODEL_DIR: str = ""
     SURVIVAL_RESEARCH_PREDICTION_ENABLED: bool = False
+    # RESEARCH_CASE is separately opt-in and must never be enabled in formal deployments.
+    SURVIVAL_RESEARCH_CASE_ENABLED: bool = False
     # Read-only, isolated research entry for the already reviewed UPENN sub-002
     # inference. Empty by default so formal deployments expose no such files.
     UPENN_SUB002_INPUT_DIR: str = ""

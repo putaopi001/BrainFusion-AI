@@ -1,5 +1,26 @@
 # 剩余工作与放行条件
 
+## Survival research V2 — current handoff, 2026-10-27
+
+The dedicated worktree `E:\BrainFusion-Survival-V2` on `codex/survival-research-v2` completes the requested V2 model comparison, isolated API scope, and Vue/Edge integration. The older engineering snapshots below are historical and must not be read as describing this worktree's current V2 software state.
+
+### Completed in V2
+
+- Four UCSF-PDGM v5 clinical Cox candidates were compared fairly on the same baseline GBM cohort (N=367; 223 events/144 censored), same patient-level five-fold outer split and fold-local preprocessing. No candidate passed the predeclared stable improvement gate; retained the age+sex Ridge baseline.
+- Version `2.0.0` full-cohort artifact and integrity manifest created under the protected research runtime; no model or patient-level output is in Git.
+- Research page exposes model comparison/evaluation, exact input schema, curve/probabilities, and limitations. `RESEARCH_CASE` is available only if `SURVIVAL_RESEARCH_CASE_ENABLED=true` is explicitly set for an isolated process. It requires UCSF cohort declaration and researcher attestation; the API cannot independently verify membership. UPENN and other out-of-cohort use is prohibited. Checked-in defaults remain disabled.
+- Targeted backend tests: 18 passed; frontend production build passed; opt-in live Edge + real artifact/API test passed for `SYNTHETIC_TEST` and `RESEARCH_CASE`; isolated prediction row count was zero.
+
+### Remaining research limitations (not software TODOs)
+
+- Internal single-center validation only; no independent external validation, clinical utility or patient-specific clinical prediction claim.
+- The model's OS clock begins at initial diagnosis while age is measured at MRI; the diagnosis-to-MRI interval is unavailable and unmodeled.
+- RSF remains `NOT_RUN` because compatible `sksurv` is unavailable. UCSF radiomics fusion remains `NOT_RUN` because no verified patient-level UCSF radiomics table/crosswalk is present. No dependency was installed and no UPENN model was mixed into this comparison.
+- RESEARCH_CASE cohort membership is asserted by the researcher, not independently authenticated by the API; do not send UPENN records or unverified cohort inputs.
+- Formal production deployment and all security gates remain unchanged. The frozen original worktree remains on its prior branch; V2 requires separate review/merge if desired.
+
+Evidence and aggregate comparisons: `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-survival-v2-20261027`; final live run: `E:\BrainFusion-Runtime\research-edition\results\survival-v2-live-e2e-20261027\run-20261027T141518-6128e721`.
+
 ## Current engineering handoff — 2026-10-26
 
 This handoff is the current integrated demo status and supersedes older dated engineering snapshots below; historical research conclusions remain valid unless this section explicitly updates them.

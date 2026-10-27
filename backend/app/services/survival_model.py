@@ -133,10 +133,33 @@ def _validate_model(model: Mapping[str, Any]) -> None:
         raise SurvivalModelError("Model preprocessing parameters are non-finite or degenerate.")
     radiomics = features.get("radiomics")
     if model.get("model_id") == UCSF_MODEL_ID:
-        if (names != ["age_at_mri_years", "sex_M"]
-                or features.get("input_schema") != {
-                    "inputs": ["age_years", "sex"], "sex_categories": ["F", "M"],
-                    "encoding": {"sex_M": "1 for M, 0 for F"}}):
+        schema = features.get("input_schema", {})
+        allowed_ucsf_schemas = {
+            ("age_at_mri_years", "sex_M"),
+            ("age_at_mri_years", "sex_M", "biopsy_prior_to_imaging_yes"),
+            ("age_at_mri_years", "sex_M", "age_quadratic"),
+            ("age_at_mri_years", "sex_M", "biopsy_prior_to_imaging_yes", "age_quadratic"),
+        }
+        expected_inputs = ["age_years", "sex"]
+        if "biopsy_prior_to_imaging_yes" in names:
+            expected_inputs.append("biopsy_prior_to_imaging")
+        expected_schema = {"inputs": expected_inputs, "sex_categories": ["F", "M"],
+                           "encoding": {"sex_M": "1 for M, 0 for F"}}
+        if model.get("model_version") != "1.0.0":
+            expected_schema["feature_timepoint"] = "Preoperative diagnostic MRI"
+        if "biopsy_prior_to_imaging_yes" in names:
+            expected_schema["biopsy_categories"] = ["No", "Yes"]
+            expected_schema["encoding"]["biopsy_prior_to_imaging_yes"] = "1 for Yes, 0 for No"
+        if "age_quadratic" in names:
+            transform = schema.get("age_quadratic_transform")
+            if (not isinstance(transform, dict) or transform.get("feature") != "age_quadratic"
+                    or transform.get("formula") != "((age_years - age_center_years) / 10)^2"
+                    or not isinstance(transform.get("age_center_years"), (int, float))
+                    or not math.isfinite(float(transform["age_center_years"]))):
+                raise SurvivalModelError("UCSF age-quadratic transform contract is invalid.")
+            expected_schema["age_quadratic_transform"] = transform
+        if (tuple(names) not in allowed_ucsf_schemas or
+                {key: value for key, value in schema.items()} != expected_schema):
             raise SurvivalModelError("UCSF feature schema is incompatible with this runtime.")
         if not isinstance(features.get("training_ranges", {}).get("age_years"), list):
             raise SurvivalModelError("UCSF model age input range is missing.")
@@ -199,7 +222,9 @@ def encode_clinical_inputs(payload: Mapping[str, Any], model: Mapping[str, Any],
     if model.get("model_id") == UCSF_MODEL_ID:
         schema = model.get("features", {}).get("input_schema", {})
         if set(payload) != set(schema.get("inputs", [])):
-            raise SurvivalModelError("UCSF input must contain exactly age_years and sex.")
+            if model.get("model_version") == "1.0.0":
+                raise SurvivalModelError("UCSF input fields must be exactly age_years and sex.")
+            raise SurvivalModelError("UCSF input fields do not exactly match the selected model schema.")
         try:
             age = float(payload["age_years"])
         except (TypeError, ValueError) as error:
@@ -215,6 +240,14 @@ def encode_clinical_inputs(payload: Mapping[str, Any], model: Mapping[str, Any],
         if radiomics is not None:
             raise SurvivalModelError("UCSF clinical model does not accept CaPTk or BrainFusion radiomics.")
         encoded = {"age_at_mri_years": age, "sex_M": float(sex == "M")}
+        if "biopsy_prior_to_imaging_yes" in model["features"]["names"]:
+            biopsy = payload.get("biopsy_prior_to_imaging")
+            if biopsy not in ("No", "Yes"):
+                raise SurvivalModelError("Biopsy prior to imaging must be one of the UCSF model categories: No or Yes.")
+            encoded["biopsy_prior_to_imaging_yes"] = float(biopsy == "Yes")
+        if "age_quadratic" in model["features"]["names"]:
+            transform = schema["age_quadratic_transform"]
+            encoded["age_quadratic"] = ((age - float(transform["age_center_years"])) / 10.0) ** 2
         return np.asarray([encoded[name] for name in model["features"]["names"]], dtype=float)
     schema = model.get("features", {}).get("encoding", {})
     required = schema.get("inputs")
@@ -335,6 +368,8 @@ def public_model(model: Mapping[str, Any]) -> dict:
         "dataset": model.get("dataset"),
         "time_unit": model["endpoint"]["time_unit"],
         "feature_names": model["features"]["names"],
+        "input_schema": model["features"].get("input_schema"),
+        "selected_candidate": model.get("selected_candidate"),
         "training": model["training"],
         "validation": model["validation"],
         "limitations": model["limitations"],

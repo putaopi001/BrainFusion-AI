@@ -64,3 +64,28 @@ The reproducible final fusion-artifact trainer is `backend/tools/train_upenn_fus
 - Artifact SHA-256: `9ce60525516db23436e818d1e5f84dda71a6fc505889ffefb625bf77646d0016`. The isolated runtime checks the manifest hash before loading.
 - Limits: one-center internal validation only; no external cohort or clinical validation. Age is measured at MRI, which can differ from the initial-diagnosis time origin. The model is suitable only for `SYNTHETIC_TEST` software demonstration, not real-patient prediction or decisions. UCSF and UPENN C-index values are not directly comparable because cohorts and endpoints differ.
 - Reproduction entry point: `backend/scripts/train_ucsf_pdgm_cox.py`; the script is for a new versioned runtime output and must not target the repository or production paths.
+
+## UCSF-PDGM V2 fair comparison and selected artifact — 2026-10-27
+
+This section supersedes the V1-only UCSF software state above. V1 remains an earlier artifact/history; V2 uses the same TCIA v5 clinical source and is installed only in the isolated runtime package.
+
+- Model ID/version: `ucsf-pdgm-clinical-cox-research` / `2.0.0`.
+- Source: TCIA UCSF-PDGM metadata v5; pinned CSV SHA-256 `afc1c23a0eb0597b56e603741e72f2308b4860281187cd3808e05b7a0116fd78`.
+- Cohort: one baseline row per patient, final diagnosis `Glioblastoma, IDH-wildtype`, positive documented OS and known vital-status field; N=367, 223 event-coded deaths, 144 censored. OS is documented in days from initial diagnosis to last clinical follow-up in the v5 glossary. Age is measured at MRI, so the diagnosis-to-MRI interval is not modeled.
+- Shared comparison protocol: stratified five-fold patient-level outer split, seed `20261027`; all feature centering, standardization and fitted model parameters are learned within each training fold. Fixed candidate penalties: Ridge alpha `0.01`; Elastic-Net alpha `0.01`, L1 ratio `0.5`. No hyperparameter search or seed search was performed.
+
+| Candidate | Mean fold Harrell C (SD) | Pooled OOF C | IPCW Brier 365d | IPCW Brier 730d | IPCW Brier 1095d | Mean fold IBS | Selected |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Age + sex Ridge Cox (baseline) | 0.6333 (0.0447) | 0.6320 | 0.2075 | 0.2130 | 0.1669 | 0.1994 | Yes |
+| Age + sex + biopsy-before-MRI Ridge Cox | 0.6347 (0.0467) | 0.6330 | 0.2059 | 0.2179 | 0.1702 | 0.2018 | No |
+| Age quadratic + sex Ridge Cox | 0.6377 (0.0492) | 0.6376 | 0.2038 | 0.2123 | 0.1625 | 0.1970 | No |
+| Age + sex + biopsy-before-MRI + age quadratic Elastic-Net Cox | 0.6354 (0.0477) | 0.6341 | 0.2020 | 0.2170 | 0.1656 | 0.1992 | No |
+
+The predeclared upgrade rule required pooled OOF C-index gain ≥0.01, paired percentile-bootstrap 95% CI lower bound >0, improvement in at least four of five folds, and non-worse paired IPCW Brier (within 0.005) at at least two of three horizons. No candidate passed; the age+sex Ridge baseline is retained. The quadratic candidate's numerical C-index increase is small and did not meet the rule. Bootstrap intervals are descriptive and do not account for dependence among overlapping CV training folds; all results remain internal, exploratory comparisons, not an unbiased external performance estimate.
+
+- Selected full eligible cohort fit: ridge Cox PH with Efron ties, alpha `0.01`; N=367 / 223 / 144 (events/censors). Cross-validation models are not reused as the final fit. The artifact stores ordered features `age_at_mri_years`, `sex_M`, means/scales, coefficients and a full-cohort Breslow baseline survival function in days.
+- Validation for the selected baseline: mean fold C `0.6333`, SD `0.0447`; pooled OOF C `0.6320`, descriptive patient bootstrap 95% interval `[0.5945, 0.6709]`; mean-fold IPCW Brier at 365/730/1095 days `0.2075 / 0.2130 / 0.1669`; mean fold IBS `0.1994`. Calibration output is fold-level calibration-in-the-large only; no calibration slope, independent test set or external validation.
+- Artifact SHA-256: `820ee0c05d50b49ee7343a2bed51b5ff60c70fad7d83551d5fa7f9fb60c5144c`; manifest SHA-256: `7a21393e7e3c5f02ca14a16f41eaac90b00885d0cdcd94958a975dd388f8799c`. Protected runtime directory: `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-survival-v2-20261027\model-artifact`.
+- Aggregate comparison/contract and patient-level OOF rows are under that versioned protected runtime result directory. OOF rows contain no ID column but include row index, time/event, fold and estimates; treat them as patient-level research data, do not publish or commit. Individual API requests/predictions are not persisted.
+- Candidate policy: RSF `NOT_RUN` because `sksurv` is unavailable in approved environments; no dependency was installed. UCSF radiomics fusion `NOT_RUN` because no verified UCSF patient-level radiomics table/crosswalk is present. No UPENN model was refit or included in this comparison.
+- Scope: RESEARCH_CASE is disabled by default and can be enabled only by a separate isolated runtime setting. It accepts only the UCSF model ID and exact UCSF cohort declaration, has no patient identifier field, requires local doctor-session/CSRF protection, and returns `RESEARCHER_ASSERTED_NOT_INDEPENDENTLY_VERIFIED`. The API cannot independently establish cohort membership from age/sex fields; do not submit UPENN or out-of-cohort records. This is not clinical use.

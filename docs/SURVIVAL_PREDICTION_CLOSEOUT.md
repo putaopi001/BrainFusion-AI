@@ -90,3 +90,26 @@ Run from `E:\BrainFusion-AI\backend` with the existing BrainFusion Conda interpr
 After fitting, configure `SURVIVAL_MODEL_DIR`, `SURVIVAL_FUSION_MODEL_DIR`, and `SURVIVAL_RESEARCH_PREDICTION_ENABLED=true` only in an isolated research process. Checked-in and formal deployment defaults remain disabled. Exercise `/api/survival/predict` only with synthetic fixture values and `declared_use_scope: "SYNTHETIC_TEST"`.
 
 To repeat the full real-artifact UI/API integration from PowerShell, run `& .\e2e\run-survival-live-artifact.ps1` from `E:\BrainFusion-AI\frontend`. The runner refuses model-hash mismatches, chooses free non-production ports, verifies the isolated DB has zero prediction rows, and saves each run under the versioned runtime evidence directory above.
+
+## Survival prediction V2 research branch — 2026-10-27
+
+This is the latest software closeout for branch `codex/survival-research-v2`, based on frozen engineering commit `2684bff19ceb4706b30a8cafe61a2c7a1b2acb7d`. It does not modify the frozen worktree or formal deployment.
+
+- **Model comparison: EXPLORATORY_COMPLETE.** Four UCSF-PDGM v5 clinical Cox candidates were compared on the same patient-level five-fold split. No candidate met the preregistered stable-improvement rule; V2 preserves the age+sex Ridge Cox baseline rather than claiming an upgrade. Results and experiment contract: `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-survival-v2-20261027\model-comparison.json`, `.csv`, and `run-contract.json`.
+- **Final model artifact: PASS_INTEGRITY.** Version `2.0.0`, N=367, 223 events, 144 censored; artifact SHA-256 `820ee0c05d50b49ee7343a2bed51b5ff60c70fad7d83551d5fa7f9fb60c5144c`; manifest SHA-256 `7a21393e7e3c5f02ca14a16f41eaac90b00885d0cdcd94958a975dd388f8799c`. The runtime package is not committed.
+- **Research API/UI: PASS_ISOLATED_E2E.** V2 adds an isolated `RESEARCH_CASE` scope for the UCSF model, while retaining `SYNTHETIC_TEST`. The additional `SURVIVAL_RESEARCH_CASE_ENABLED` switch defaults false. RESEARCH_CASE requires a UCSF cohort declaration, a user checkbox attestation in the UI, local doctor-session/CSRF authorization, and accepts no patient identifier. The service cannot independently verify cohort membership; response states `RESEARCHER_ASSERTED_NOT_INDEPENDENTLY_VERIFIED`, rejects a declared UPENN cohort/model, and instructs users not to submit UPENN records. Predictions are not written to the database.
+- **Real browser/API evidence:** `E:\BrainFusion-Runtime\research-edition\results\survival-v2-live-e2e-20261027\run-20261027T141518-6128e721`. Both input scopes used the real V2 artifact and live isolated FastAPI routes through Edge/Vue. Authenticated 365/730/1095-day curves were finite, in `[0,1]`, and non-increasing; incorrect cohort was 422, unauthenticated request 401, isolated prediction rows 0. Only unrelated legacy research panels used synthetic fixtures.
+- **Targeted backend tests:** `18 passed`; **frontend build:** passed; **V2 live Edge E2E:** `1 passed`; no formal service/model was started or altered. Test execution used the existing Python environment and read-only dependency reuse; no package installation was performed.
+- **Not run:** RSF (no compatible `sksurv`); UCSF radiomics fusion (no verified feature/crosswalk table); one-year classification; external validation; UPENN inference; production deployment.
+
+The V2 OS endpoint follows the documented TCIA UCSF-PDGM v5 glossary, but the model remains single-center, internally validated and research-only. Age is measured at MRI while OS starts at initial diagnosis. The API cannot authenticate that a manually entered research record belongs to UCSF-PDGM; RESEARCH_CASE is an explicit researcher attestation, not identity verification. Never represent these results as clinical prediction or external validation.
+
+Reproduction command from the independent worktree's backend directory:
+
+```powershell
+& 'E:\BrainFusion-AI\.conda\brainfusion\python.exe' scripts\compare_ucsf_pdgm_survival_v2.py `
+  --clinical-csv 'E:\BrainFusion-Data\UCSF-PDGM\clinical\UCSF-PDGM-metadata_v5.csv' `
+  --output-root '<new protected versioned runtime directory>'
+```
+
+The command refuses a non-empty output directory. It writes model artifact/manifest, aggregate candidate metrics, and a protected local OOF file without identifiers. OOF data must remain in protected runtime and must not be committed. For an isolated real-artifact Edge run, use `frontend\e2e\run-survival-live-artifact.ps1 -V2`; it verifies the pinned artifact hash, selects non-production ports, generates a temporary local account and SQLite, then removes that temporary sandbox. The run saves aggregate evidence under the dated runtime results directory.

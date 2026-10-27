@@ -8,12 +8,12 @@
       <template #header>生存分析软件状态</template>
       <el-tag type="warning">{{ survivalStatus?.research_status || '读取状态中' }}</el-tag>
       <p>{{ survivalStatus?.reason || '正在读取生存数据条件。' }}</p>
-      <p>KM 与 Cox 工程接口仅接收 SYNTHETIC_TEST 数据。UPENN 模型使用研究者定义终点；UCSF-PDGM 模型使用 TCIA v5 glossary 记录的 OS 字段，均为研究用途且不能用于真实患者或临床决策。</p>
+      <p>KM 与 Cox 软件仍按工程契约运行。UPENN 模型使用研究者定义终点；UCSF-PDGM 模型使用 TCIA v5 glossary 记录的 OS 字段，均为研究用途且不能用于临床决策。</p>
       <el-table v-if="survivalStatus" :data="survivalRows" border>
         <el-table-column prop="name" label="分析能力" />
         <el-table-column prop="status" label="软件状态" />
       </el-table>
-      <el-alert title="UPENN 官方 OS 字段定义仍未验证。UCSF-PDGM OS 按官方 v5 glossary 定义训练；这不构成临床验证。预测接口只接受显式合成测试请求，禁止输入真实患者资料。" type="warning" :closable="false" />
+      <el-alert title="UPENN 官方 OS 字段定义仍未验证。UCSF-PDGM OS 按官方 v5 glossary 定义训练；这不构成临床验证。预测默认使用 SYNTHETIC_TEST；RESEARCH_CASE 仅在隔离运行时显式启用后开放。" type="warning" :closable="false" />
       <el-divider />
       <h3>研究 Cox 模型状态</h3>
       <el-tag :type="survivalModelStatus?.available ? 'warning' : 'info'">{{ survivalModelStatus?.status || '读取状态中' }}</el-tag>
@@ -31,11 +31,32 @@
         <p v-if="survivalChosenModel">版本 {{ survivalChosenModel.model_version }} · {{ survivalChosenModel.dataset?.id || 'UPENN-GBM' }} · {{ survivalChosenModel.endpoint_status }} · 五折内部 C-index {{ Number(survivalCvMean(survivalChosenModel)).toFixed(4) }}</p>
         <p v-if="survivalChosenModel?.training">训练队列：{{ survivalChosenModel.training.cohort_definition || survivalChosenModel.training.n + ' 个样本' }}；N={{ survivalChosenModel.training.n }}，事件={{ survivalChosenModel.training.events }}，删失={{ survivalChosenModel.training.censored }}。</p>
         <p>验证：仅患者级内部五折交叉验证。C-index 是排序指标，不是分类准确率；没有独立外部或临床验证。UCSF-PDGM 模型仅适用于其 IDH-wildtype GBM 训练子队列。</p>
-        <el-tag type="warning">研究模型演示仅限 SYNTHETIC_TEST</el-tag>
+        <template v-if="survivalChosenModel?.validation?.candidate_comparison?.table">
+          <h4>同一患者级外层划分的预设模型比较</h4>
+          <el-table :data="survivalComparisonRows" border>
+            <el-table-column prop="name" label="候选模型" />
+            <el-table-column prop="cIndex" label="折外 Harrell C-index（均值±SD）" />
+            <el-table-column prop="brier365" label="365 天 Brier" />
+            <el-table-column prop="brier730" label="730 天 Brier" />
+            <el-table-column prop="brier1095" label="1095 天 Brier" />
+            <el-table-column prop="ibs" label="IBS" />
+            <el-table-column prop="selected" label="选择" />
+          </el-table>
+          <p>{{ survivalChosenModel.validation.candidate_comparison.selection_note }} 该比较是内部验证，不是外部验证。</p>
+        </template>
+        <el-tag type="warning">研究模型 · 非临床工具 · 无外部验证</el-tag>
         <div class="survival-predict-inputs">
-          <label>合成年龄（年）<el-input-number v-model="survivalAge" :min="18" :max="120" /></label>
-          <el-select v-if="survivalUsesUcsfModel" v-model="survivalUcsfSex" aria-label="UCSF 合成性别" style="width: 150px">
-            <el-option value="F" label="F（合成）" /><el-option value="M" label="M（合成）" />
+          <label>输入范围
+            <el-select v-model="survivalInputScope" class="survival-input-scope-select" aria-label="生存预测输入范围" style="width: 190px" @change="onSurvivalScopeChange">
+              <el-option value="SYNTHETIC_TEST" label="SYNTHETIC_TEST" />
+              <el-option value="RESEARCH_CASE" label="RESEARCH_CASE" :disabled="!survivalResearchCaseAvailable" />
+            </el-select>
+          </label>
+          <el-alert v-if="survivalInputScope === 'RESEARCH_CASE'" title="仅限经授权、确属 UCSF-PDGM v5 IDH-wildtype GBM 队列的研究输入；不要提交 UPENN 或其他队列病例。服务无法独立核验队列成员身份，提交即表示研究者承担来源核验责任。请勿输入身份标识；请求和预测不保存。" type="warning" :closable="false" />
+          <el-checkbox v-if="survivalInputScope === 'RESEARCH_CASE'" v-model="survivalResearchAttested">我已在本地核验该输入属于所选 UCSF-PDGM 研究队列，并确认已获研究授权</el-checkbox>
+          <label>{{ survivalInputScope === 'SYNTHETIC_TEST' ? '合成年龄（年）' : '研究输入年龄（年）' }}<el-input-number v-model="survivalAge" :min="18" :max="120" /></label>
+          <el-select v-if="survivalUsesUcsfModel" v-model="survivalUcsfSex" class="survival-ucsf-sex-select" aria-label="UCSF 性别" style="width: 150px">
+            <el-option value="F" :label="survivalInputScope === 'SYNTHETIC_TEST' ? 'F（合成）' : 'F'" /><el-option value="M" :label="survivalInputScope === 'SYNTHETIC_TEST' ? 'M（合成）' : 'M'" />
           </el-select>
           <el-select v-else v-model="survivalGender" aria-label="合成性别" style="width: 130px">
             <el-option value="F" label="F（合成）" /><el-option value="M" label="M（合成）" />
@@ -57,17 +78,22 @@
             <label>T1 NC Mean（合成）<el-input-number v-model="survivalRadiomics.T1_NC_Intensity_Mean" /></label>
           </template>
           </template>
-          <el-input v-model="survivalTimes" aria-label="合成生存时间点（天）" placeholder="天数，逗号分隔" style="width: 220px" />
-          <el-button type="primary" :disabled="!survivalCanPredict" :loading="survivalPredictionLoading" @click="predictSyntheticSurvival">运行合成研究示例</el-button>
+          <el-select v-if="survivalNeedsBiopsy" v-model="survivalUcsfBiopsy" aria-label="影像前活检状态" style="width: 220px">
+            <el-option value="No" :label="survivalInputScope === 'SYNTHETIC_TEST' ? '影像前未活检（合成）' : '影像前未活检'" />
+            <el-option value="Yes" :label="survivalInputScope === 'SYNTHETIC_TEST' ? '影像前已活检（合成）' : '影像前已活检'" />
+          </el-select>
+          <el-input v-model="survivalTimes" aria-label="生存时间点（天）" placeholder="天数，逗号分隔" style="width: 220px" />
+          <el-button type="primary" :disabled="!survivalCanPredict" :loading="survivalPredictionLoading" @click="runSurvivalPrediction">{{ survivalInputScope === 'SYNTHETIC_TEST' ? '运行合成研究示例' : '运行 RESEARCH_CASE 研究输入' }}</el-button>
         </div>
+        <el-alert v-if="survivalInputScope === 'RESEARCH_CASE' && !survivalResearchCaseAvailable" title="当前隔离后端未启用 RESEARCH_CASE；请使用合成模式，或由维护者在独立研究配置中启用后重启。正式服务不得启用此开关。" type="info" :closable="false" />
         <el-alert v-if="evaluationUser?.role !== 'doctor'" title="需先登录本地 doctor 角色账户；账户角色不代表临床资质。" type="warning" :closable="false" />
         <el-alert v-if="survivalPredictionError" :title="survivalPredictionError" type="error" :closable="false" />
         <template v-if="survivalPrediction">
-          <p>输入范围：SYNTHETIC_TEST · 模型 {{ survivalPrediction.model_id }} / {{ survivalPrediction.model_version }} · 时间单位：天</p>
+          <p>输入范围：<el-tag :type="survivalPrediction.input_scope === 'RESEARCH_CASE' ? 'warning' : 'info'">{{ survivalPrediction.input_scope }}</el-tag> · 模型 {{ survivalPrediction.model_id }} / {{ survivalPrediction.model_version }} · 时间单位：天</p>
           <p>相对风险指数：{{ Number(survivalPrediction.relative_risk).toPrecision(5) }}（相对模型基线的 Cox 风险指数，不是患者级风险结论）</p>
           <figure class="survival-curve-figure">
-            <figcaption>合成请求返回的研究生存曲线</figcaption>
-            <svg viewBox="0 0 480 190" role="img" aria-label="合成生存曲线">
+            <figcaption>{{ survivalPrediction.input_scope }} 请求返回的研究生存曲线</figcaption>
+            <svg viewBox="0 0 480 190" role="img" :aria-label="`${survivalPrediction.input_scope} 生存曲线`">
               <line x1="42" y1="20" x2="42" y2="160" class="survival-axis" />
               <line x1="42" y1="160" x2="460" y2="160" class="survival-axis" />
               <text x="4" y="25">100%</text><text x="12" y="94">50%</text><text x="23" y="164">0%</text>
@@ -88,7 +114,9 @@
               <template #default="scope">{{ (scope.row.survival_probability * 100).toFixed(1) }}%</template>
             </el-table-column>
           </el-table>
-          <el-alert title="这是 SYNTHETIC_TEST 合成输入演示，不代表真实患者预测或临床验证；结果未保存。" type="warning" :closable="false" />
+          <el-alert v-if="survivalPrediction.input_scope === 'SYNTHETIC_TEST'" title="这是合成输入演示，不代表真实患者预测或临床验证；结果未保存。" type="warning" :closable="false" />
+          <el-alert v-else title="这是 UCSF-PDGM 队列研究输入结果；队列成员资格由研究者声明、API 未独立核验。本结果不是临床验证或决策依据，且未保存。" type="warning" :closable="false" />
+          <ul><li v-for="(limitation, index) in survivalPrediction.limitations" :key="index">{{ limitation }}</li></ul>
         </template>
       </template>
     </el-card>
@@ -229,7 +257,9 @@ const survivalStatus = ref(null), survivalModelStatus = ref(null), survivalModel
 const survivalModelUnavailable = ref({})
 const survivalAge = ref(63), survivalGender = ref('F'), survivalIdh = ref('Wildtype'), survivalGtr = ref('N')
 const survivalUcsfSex = ref('F')
+const survivalUcsfBiopsy = ref('No')
 const survivalModelChoice = ref('upenn-clinical-cox-research')
+const survivalInputScope = ref('SYNTHETIC_TEST'), survivalResearchAttested = ref(false)
 const survivalRadiomics = ref({ T1GD_ET_Intensity_Mean: 1, FLAIR_ED_Intensity_Mean: 2, T2_ED_Intensity_Mean: 3, T1_NC_Intensity_Mean: 4 })
 const survivalTimes = ref('365,730,1095'), survivalPrediction = ref(null), survivalPredictionLoading = ref(false)
 const survivalPredictionError = ref(''), survivalModelError = ref('')
@@ -260,15 +290,34 @@ const survivalRows = computed(() => Object.entries(survivalStatus.value?.softwar
   name: ({ endpoint_validation: '终点契约校验', kaplan_meier: 'Kaplan–Meier', cox_ph: 'Cox PH', random_survival_forest: 'Random Survival Forest' })[key] || key,
   status: status === 'available' ? '可用' : status === 'not_available' ? '未安装/不可用' : '需通过数据契约'
 })))
+const survivalComparisonRows = computed(() => (survivalChosenModel.value?.validation?.candidate_comparison?.table || []).map(row => ({
+  name: ({ age_sex_ridge: '年龄 + 性别 Ridge Cox（基线）',
+    age_sex_biopsy_ridge: '年龄 + 性别 + 影像前活检 Ridge Cox',
+    age_sex_quadratic_ridge: '年龄二次项 + 性别 Ridge Cox',
+    age_sex_biopsy_elastic_net: '年龄 + 性别 + 影像前活检 + 年龄二次项 Elastic-Net Cox' })[row.candidate] || row.candidate,
+  cIndex: `${Number(row.mean_fold_c_index).toFixed(3)} ± ${Number(row.sd_fold_c_index).toFixed(3)}`,
+  brier365: Number(row.brier_365).toFixed(3), brier730: Number(row.brier_730).toFixed(3),
+  brier1095: Number(row.brier_1095).toFixed(3), ibs: Number(row.mean_fold_ibs).toFixed(3),
+  selected: row.selected ? '保留用于 V2' : '未选',
+})))
 const survivalCanPredict = computed(() => Boolean(survivalModelStatus.value?.available
   && survivalModelAvailable(survivalModelChoice.value)
+  && (survivalInputScope.value !== 'RESEARCH_CASE' || (survivalResearchCaseAvailable.value
+    && survivalUsesUcsfModel.value && survivalResearchAttested.value))
+  && (survivalInputScope.value !== 'SYNTHETIC_TEST'
+    || survivalModelStatus.value?.supported_prediction_scopes?.includes('SYNTHETIC_TEST'))
   && evaluationUser.value?.role === 'doctor' && evaluationCsrf.value
   && Number.isFinite(Number(survivalAge.value))
+  && Number(survivalAge.value) >= 18 && Number(survivalAge.value) <= 120
+  && (!survivalUsesUcsfModel.value || ['F', 'M'].includes(survivalUcsfSex.value))
+  && (!survivalNeedsBiopsy.value || ['No', 'Yes'].includes(survivalUcsfBiopsy.value))
   && (survivalModelChoice.value !== 'upenn-clinical-captk-fusion-cox-research'
     || Object.values(survivalRadiomics.value).every(value => Number.isFinite(Number(value))))
   && survivalTimes.value.split(',').every(value => Number.isFinite(Number(value.trim())) && Number(value.trim()) > 0)))
 const survivalChosenModel = computed(() => survivalModels.value.find(model => model.model_id === survivalModelChoice.value) || null)
 const survivalUsesUcsfModel = computed(() => survivalModelChoice.value === 'ucsf-pdgm-clinical-cox-research')
+const survivalResearchCaseAvailable = computed(() => survivalModelStatus.value?.supported_prediction_scopes?.includes('RESEARCH_CASE') === true)
+const survivalNeedsBiopsy = computed(() => survivalChosenModel.value?.input_schema?.inputs?.includes('biopsy_prior_to_imaging') === true)
 const survivalFusionUnavailableReason = computed(() => survivalModelAvailable('upenn-clinical-captk-fusion-cox-research')
   ? '' : survivalModelUnavailable.value['upenn-clinical-captk-fusion-cox-research'] || '独立融合工件未配置')
 const survivalRadiomicsFeatureNames = ['T1GD_ET_Intensity_Mean', 'FLAIR_ED_Intensity_Mean', 'T2_ED_Intensity_Mean', 'T1_NC_Intensity_Mean']
@@ -320,7 +369,20 @@ async function loadSurvivalModelStatus() {
     survivalModelError.value = String(e.response?.data?.detail || e.message)
   }
 }
-async function predictSyntheticSurvival() {
+function onSurvivalScopeChange(scope) {
+  survivalPrediction.value = null
+  survivalPredictionError.value = ''
+  survivalResearchAttested.value = false
+  if (scope === 'RESEARCH_CASE') {
+    survivalAge.value = null
+    survivalUcsfSex.value = ''
+    if (survivalModelAvailable('ucsf-pdgm-clinical-cox-research')) survivalModelChoice.value = 'ucsf-pdgm-clinical-cox-research'
+  } else {
+    survivalAge.value = 63
+    survivalUcsfSex.value = 'F'
+  }
+}
+async function runSurvivalPrediction() {
   if (!survivalCanPredict.value) return
   survivalPredictionLoading.value = true
   survivalPredictionError.value = ''
@@ -332,13 +394,16 @@ async function predictSyntheticSurvival() {
     return
   }
   try {
+    const clinical = survivalUsesUcsfModel.value
+      ? { age_years: Number(survivalAge.value), sex: survivalUcsfSex.value,
+        ...(survivalNeedsBiopsy.value ? { biopsy_prior_to_imaging: survivalUcsfBiopsy.value } : {}) }
+      : { age_years: Number(survivalAge.value), gender: survivalGender.value,
+        IDH1: survivalIdh.value, GTR_over90percent: survivalGtr.value }
     const response = await request.post('/api/survival/predict', {
-      declared_use_scope: 'SYNTHETIC_TEST',
+      declared_use_scope: survivalInputScope.value,
       model_id: survivalModelChoice.value,
-      clinical: survivalUsesUcsfModel.value
-        ? { age_years: Number(survivalAge.value), sex: survivalUcsfSex.value }
-        : { age_years: Number(survivalAge.value), gender: survivalGender.value,
-          IDH1: survivalIdh.value, GTR_over90percent: survivalGtr.value },
+      ...(survivalInputScope.value === 'RESEARCH_CASE' ? { research_cohort: 'UCSF-PDGM-v5-IDH-wildtype-GBM' } : {}),
+      clinical,
       ...(survivalModelChoice.value === 'upenn-clinical-captk-fusion-cox-research'
         ? { radiomics: Object.fromEntries(Object.entries(survivalRadiomics.value).map(([name, value]) => [name, Number(value)])) }
         : {}),
