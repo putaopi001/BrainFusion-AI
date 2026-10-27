@@ -1,5 +1,13 @@
 # BrainFusion-AI 功能矩阵
 
+## UCSF matched imaging pilot — 2026-10-27 (current research-branch addition)
+
+- **Data acquisition / same-patient join: PASS for a bounded pilot.** Ten baseline, IDH-wildtype GBM cases with valid v5 OS/status and blank official `BraTS21 ID` were deterministically selected with 5 candidate events / 5 candidate censors. The clinical IDs (3-digit) were normalized numerically to the mirror image folders (4-digit); all ten unique joins were checked. The fixed MedOtter revision is `e9372219cf1cd2fdd52260cd45f7514b4aa7638e`; all 50 T1/T1c/T2/FLAIR/reference files match the revision's LFS SHA-256. The mirror metadata and glossary are byte-identical to the local TCIA-designated copies. This is not a full-collection bytewise image verification.
+- **Multi-case segmentation: PUBLIC_REFERENCE_AGREEMENT, not independent validation.** Ten isolated inference runs using the existing SegResNet checkpoint produced WT/TC/ET comparisons: mean Dice 0.8360/0.8563/0.7425; mean HD95 24.22/4.51/3.84 mm. Per-case Dice, HD95, precision, recall, TP/FP/FN and volume outputs are in protected runtime evidence. The checkpoint states BraTS 2018 training, but exact case membership is unavailable; overlap is `UNKNOWN`. Do not describe this as independent external validation.
+- **BrainFusion radiomics: PASS for feature extraction pipeline feasibility.** The existing selected-20 panel was extracted for all ten same-patient MRI/reference/clinical joins (20/20 finite features per case), using its unchanged contract. It was selected in a separate WAW IDH task and is not validated or selected for UCSF survival.
+- **Survival/fusion: NOT_ESTIMABLE; no model fit or platform integration.** The 10-case event-stratified pilot is not a representative survival cohort and cannot support a 20-feature Cox or RSF comparison. Clinical baseline was not reevaluated on these in-development IDs. The existing UCSF clinical Cox artifact remains unchanged; no new fusion artifact was produced or connected to the API/UI.
+- **Evidence:** `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-fusion-pilot-20261027-v1\PILOT-REPORT.md` and `PILOT-RESULTS.json`; patient-level crosswalk/features and derived reference masks remain under `E:\BrainFusion-Data\UCSF-PDGM\research-v2\` and are not committed.
+
 ## Latest integrated delivery snapshot — 2026-10-26
 
 This snapshot supersedes earlier entries below about archive import availability, missing sub-002 result navigation, or the prior archive inventory. Dated research summaries remain historical unless explicitly marked current.

@@ -1,5 +1,26 @@
 # 剩余工作与放行条件
 
+## UCSF matched imaging / survival fusion — 2026-10-27
+
+### Completed in this bounded pass
+
+- Downloaded and verified 10 baseline cases / 50 MRI and reference files at pinned MedOtter revision `e9372219cf1cd2fdd52260cd45f7514b4aa7638e`; v5 clinical metadata and glossary matched the local TCIA-designated copies bytewise.
+- Resolved ten same-patient clinical-to-image joins by normalized numeric ID. Reused the official v5 `BraTS21 ID` field to exclude mapped cases from this subset.
+- Ran the existing SegResNet pipeline on all ten cases and completed WT/TC/ET public-reference agreement, with overlays and per-case metrics.
+- Extracted the existing BrainFusion selected-20 radiomics panel on all ten matching cases. This demonstrates data/feature pipeline feasibility only.
+- No survival models were trained and no new model was added to the platform.
+
+### Remaining scientific blockers
+
+- **Fusion survival comparison: NOT_ESTIMABLE on this pilot.** The ten cases were deliberately event-stratified (5 candidate event / 5 candidate censored), and 20 radiomics features would grossly over-parameterize this sample. Obtain an appropriately sized, permitted patient-level imaging/clinical cohort before fitting and validating radiomics-only or fusion survival models. Keep all transforms and feature selection inside patient-level training folds.
+- **Checkpoint independence: UNKNOWN.** The MONAI checkpoint identifies BraTS 2018 training and its exact subject manifest is unavailable. The selected cases have blank v5 BraTS21 IDs, but this is not proof of no overlap with BraTS 2018 training. Do not claim independent external validation until exact training membership can be checked.
+- **Official image byte comparison: NOT_PERFORMED.** The full TCIA image collection was not downloaded. The pinned subset's files are verified against its immutable LFS hashes and its v5 metadata/glossary are byte-identical to local TCIA-designated files. For full-source confirmation, compare each used image/mask against official v5 package checksums or identifiers.
+- **BraTS mapping workbook: BLOCKED_BY_NETWORK for direct attachment.** The selected cohort was screened using the `BraTS21 ID` column in v5 metadata. The official workbook URL failed TLS handshake; retry only when that endpoint/network is available if workbook-level cross-check is required.
+- **Reference provenance: mirror-documented.** The pinned dataset card describes masks as manually corrected/approved by neuroradiologists, but this pass did not independently verify each label against the full TCIA package or obtain subject-specific review records.
+- **No platform integration.** No new survival artifact exists; do not expose this pilot's features as a predictor. Existing UCSF clinical Cox remains unchanged and `SYNTHETIC_TEST`/current access controls remain in force.
+
+Evidence: `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-fusion-pilot-20261027-v1\PILOT-REPORT.md`. Patient-level artifacts are under the protected `E:\BrainFusion-Data\UCSF-PDGM\research-v2\` directory and must not enter Git.
+
 ## Survival research V2 — current handoff, 2026-10-27
 
 The dedicated worktree `E:\BrainFusion-Survival-V2` on `codex/survival-research-v2` completes the requested V2 model comparison, isolated API scope, and Vue/Edge integration. The older engineering snapshots below are historical and must not be read as describing this worktree's current V2 software state.

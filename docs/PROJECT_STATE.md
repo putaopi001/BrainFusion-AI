@@ -1,5 +1,18 @@
 # Project execution state
 
+## UCSF matched imaging pilot — 2026-10-27
+
+This is a separate follow-up on branch `codex/ucsf-fusion-study-v1`, based on the completed V2 research branch. The frozen engineering branch was not modified.
+
+- Acquired ten five-file cases from fixed MedOtter revision `e9372219cf1cd2fdd52260cd45f7514b4aa7638e`; all 50 LFS SHA-256 checks passed. Mirror v5 clinical metadata and glossary match the local TCIA-designated copies bytewise. Ten baseline clinical-to-image joins were resolved by numeric ID normalization; all selected records have blank v5 BraTS21 mapping IDs.
+- Existing MONAI BraTS2018 SegResNet checkpoint SHA-256 `860ccb3f1c21c99d0410ad8a1ac4ef6b8fab60cec0a503b0ba42675741a750ae` ran once on each selected case in the isolated study flow. WT/TC/ET were evaluated against the pinned release masks after a derived-only 4→3 recode. This is public-reference agreement; checkpoint training-subject overlap with UCSF remains `UNKNOWN`.
+- The existing BrainFusion selected-20 radiomics panel was extracted for all ten same-patient joins (10/10 complete vectors). Its prior selection came from a separate WAW IDH task; no UCSF survival feature selection or model fitting was performed.
+- No clinical/radiomics/fusion Cox or RSF comparison was fitted: a 10-case event-stratified acquisition pilot is not suitable for patient-level survival validation. No new model artifact was created or integrated. Existing UCSF Cox and API/UI remain unchanged.
+- Aggregate result, method, code hashes, software versions and SHA-256 list: `E:\BrainFusion-Runtime\research-edition\results\ucsf-pdgm-fusion-pilot-20261027-v1\`. Patient-level features/crosswalk and derived masks are protected under `E:\BrainFusion-Data\UCSF-PDGM\research-v2\` and excluded from Git.
+- The TCIA mapping workbook attachment request failed its TLS handshake; screening used the BraTS21 ID field in the byte-identical local/mirror v5 metadata. This does not resolve possible BraTS2018 checkpoint training overlap.
+
+Overall pilot status: `PILOT_DATA_FLOW_COMPLETE_SURVIVAL_MODELING_NOT_ESTIMABLE`.
+
 ## Survival research V2 worktree delivery — 2026-10-27
 
 Current V2 source branch: `codex/survival-research-v2`, based on frozen engineering commit `2684bff19ceb4706b30a8cafe61a2c7a1b2acb7d`. This is a separate research worktree; it does not replace or modify the frozen research-edition branch or formal runtime.
